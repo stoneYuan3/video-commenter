@@ -1,103 +1,230 @@
-import Image from "next/image";
+'use client';
+
+import { useState, useRef, useEffect } from 'react';
+
+interface Comment {
+  id: string;
+  timestamp: number;
+  text: string;
+  timeString: string;
+  displayId?: string;
+}
+
+declare global {
+  interface Window {
+    YT: any;
+    onYouTubeIframeAPIReady: () => void;
+  }
+}
 
 export default function Home() {
-  return (
-    <div className="font-sans grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20">
-      <main className="flex flex-col gap-[32px] row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="font-mono list-inside list-decimal text-sm/6 text-center sm:text-left">
-          <li className="mb-2 tracking-[-.01em]">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] font-mono font-semibold px-1 py-0.5 rounded">
-              src/app/page.tsx
-            </code>
-            .
-          </li>
-          <li className="tracking-[-.01em]">
-            Save and see your changes instantly.
-          </li>
-        </ol>
+  const [comments, setComments] = useState<Comment[]>([]);
+  const [newComment, setNewComment] = useState('');
+  const [currentTime, setCurrentTime] = useState(0);
+  const [displayedComments, setDisplayedComments] = useState<Comment[]>([]);
+  const playerRef = useRef<any>(null);
+  const playerDivRef = useRef<HTMLDivElement>(null);
 
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:w-auto"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 w-full sm:w-auto md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
+  // Load YouTube IFrame API
+  useEffect(() => {
+    // Load the IFrame Player API code asynchronously
+    const tag = document.createElement('script');
+    tag.src = 'https://www.youtube.com/iframe_api';
+    const firstScriptTag = document.getElementsByTagName('script')[0];
+    firstScriptTag.parentNode?.insertBefore(tag, firstScriptTag);
+
+    // Create YouTube player when API is ready
+    window.onYouTubeIframeAPIReady = () => {
+      playerRef.current = new window.YT.Player('youtube-player', {
+        height: '480',
+        width: '100%',
+        videoId: 'XuCiqeKXqu8',
+        playerVars: {
+          'playsinline': 1
+        },
+        events: {
+          'onReady': onPlayerReady,
+        }
+      });
+    };
+  }, []);
+
+  const onPlayerReady = () => {
+    // Start polling for current time
+    const interval = setInterval(() => {
+      if (playerRef.current && playerRef.current.getCurrentTime) {
+        const time = Math.floor(playerRef.current.getCurrentTime());
+        setCurrentTime(time);
+      }
+    }, 100); // Poll every 100ms for smoother updates
+
+    return () => clearInterval(interval);
+  };
+
+  // Show comments when timestamp matches
+  useEffect(() => {
+    const matchingComments = comments.filter(
+      comment => Math.abs(comment.timestamp - currentTime) < 1
+    );
+
+    if (matchingComments.length > 0) {
+      // Add display IDs and timestamps to track when they should disappear
+      const newDisplayedComments = matchingComments.map(comment => ({
+        ...comment,
+        displayId: `${comment.id}-${Date.now()}`
+      }));
+
+      setDisplayedComments(prev => {
+        // Add new comments if they're not already displayed
+        const existingIds = new Set(prev.map(c => c.id));
+        const toAdd = newDisplayedComments.filter(c => !existingIds.has(c.id));
+        return [...prev, ...toAdd];
+      });
+
+      // Remove comments after 4 seconds
+      newDisplayedComments.forEach(comment => {
+        setTimeout(() => {
+          setDisplayedComments(prev =>
+            prev.filter(c => c.displayId !== comment.displayId)
+          );
+        }, 4000);
+      });
+    }
+  }, [currentTime, comments]);
+
+  const formatTime = (seconds: number): string => {
+    const hours = Math.floor(seconds / 3600);
+    const minutes = Math.floor((seconds % 3600) / 60);
+    const secs = seconds % 60;
+
+    if (hours > 0) {
+      return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+    }
+    return `${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+  };
+
+  const addComment = () => {
+    if (newComment.trim()) {
+      const comment: Comment = {
+        id: Date.now().toString(),
+        timestamp: currentTime,
+        text: newComment,
+        timeString: formatTime(currentTime)
+      };
+      setComments(prev => [...prev, comment].sort((a, b) => a.timestamp - b.timestamp));
+      setNewComment('');
+    }
+  };
+
+  const jumpToTime = (timestamp: number) => {
+    if (playerRef.current && playerRef.current.seekTo) {
+      playerRef.current.seekTo(timestamp, true);
+    }
+  };
+
+  return (
+    <div className="min-h-screen bg-gray-50 p-8">
+      <div className="max-w-7xl mx-auto">
+        <h1 className="text-3xl font-bold mb-8 text-gray-800">Video Commenter</h1>
+
+        <div className="flex gap-6">
+          {/* Main content */}
+          <div className="flex-1">
+            {/* Video embed */}
+            <div className="bg-white rounded-lg shadow-lg p-4 mb-6">
+              <div
+                id="youtube-player"
+                ref={playerDivRef}
+                className="rounded"
+              />
+              <div className="mt-2 text-sm text-gray-600">
+                Current Time: {formatTime(currentTime)}
+              </div>
+            </div>
+
+            {/* Add comment interface */}
+            <div className="bg-white rounded-lg shadow-lg p-6 mb-6">
+              <h2 className="text-xl font-semibold mb-4 text-gray-800">Add Comment</h2>
+              <div className="flex gap-3">
+                <input
+                  type="text"
+                  value={newComment}
+                  onChange={(e) => setNewComment(e.target.value)}
+                  onKeyPress={(e) => e.key === 'Enter' && addComment()}
+                  placeholder="Add a comment at the current timestamp..."
+                  className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-800"
+                />
+                <button
+                  onClick={addComment}
+                  className="px-6 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors font-medium"
+                >
+                  Add
+                </button>
+              </div>
+              <div className="mt-2 text-sm text-gray-600">
+                Comment will be added at: {formatTime(currentTime)}
+              </div>
+            </div>
+
+            {/* Comments list */}
+            <div className="bg-white rounded-lg shadow-lg p-6">
+              <h2 className="text-xl font-semibold mb-4 text-gray-800">Comments</h2>
+              {comments.length === 0 ? (
+                <p className="text-gray-500 italic">No comments yet. Add one above!</p>
+              ) : (
+                <div className="space-y-3">
+                  {comments.map(comment => (
+                    <div
+                      key={comment.id}
+                      className="border border-gray-200 rounded-lg p-4 hover:bg-gray-50 transition-colors"
+                    >
+                      <div className="flex items-start justify-between">
+                        <div className="flex-1">
+                          <button
+                            onClick={() => jumpToTime(comment.timestamp)}
+                            className="text-blue-500 hover:text-blue-700 font-mono text-sm font-semibold mb-2 hover:underline"
+                          >
+                            {comment.timeString}
+                          </button>
+                          <p className="text-gray-800">{comment.text}</p>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Sidebar */}
+          <div className="w-80">
+            <div className="bg-white rounded-lg shadow-lg p-6 sticky top-8">
+              <h2 className="text-xl font-semibold mb-4 text-gray-800">Timestamp Comments</h2>
+              <div className="min-h-[200px]">
+                {displayedComments.length > 0 ? (
+                  <div className="space-y-3">
+                    {displayedComments.map(comment => (
+                      <div
+                        key={comment.displayId}
+                        className="bg-blue-50 border border-blue-200 rounded-lg p-4 animate-fade-in"
+                      >
+                        <div className="text-blue-600 font-mono text-sm font-semibold mb-2">
+                          {comment.timeString}
+                        </div>
+                        <p className="text-gray-800">{comment.text}</p>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-gray-400 italic">
+                    Comments will appear here when the video reaches their timestamp
+                  </p>
+                )}
+              </div>
+            </div>
+          </div>
         </div>
-      </main>
-      <footer className="row-start-3 flex gap-[24px] flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
+      </div>
     </div>
   );
 }
