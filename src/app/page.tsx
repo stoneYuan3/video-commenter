@@ -30,14 +30,24 @@ export default function Home() {
   const [dragStart, setDragStart] = useState<number | null>(null);
   const [hasDragged, setHasDragged] = useState(false);
   const [hoveredComment, setHoveredComment] = useState<Comment | null>(null);
+  const [videoSource, setVideoSource] = useState<'youtube' | 'upload' | 'gdrive' | null>(null);
+  const [youtubeUrl, setYoutubeUrl] = useState('');
+  const [videoId, setVideoId] = useState('');
+  const [uploadedVideo, setUploadedVideo] = useState<string | null>(null);
+  const [gdriveUrl, setGdriveUrl] = useState('');
+  const [gdriveId, setGdriveId] = useState('');
+  const [isPlaying, setIsPlaying] = useState(false);
 
   const playerRef = useRef<any>(null);
   const playerDivRef = useRef<HTMLDivElement>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
   const timelineRef = useRef<HTMLDivElement>(null);
   const removalTimeoutsRef = useRef<Map<string, NodeJS.Timeout>>(new Map());
 
   // Load YouTube IFrame API
   useEffect(() => {
+    if (videoSource !== 'youtube') return;
+
     const tag = document.createElement('script');
     tag.src = 'https://www.youtube.com/iframe_api';
     const firstScriptTag = document.getElementsByTagName('script')[0];
@@ -47,7 +57,7 @@ export default function Home() {
       playerRef.current = new window.YT.Player('youtube-player', {
         height: '480',
         width: '100%',
-        videoId: 'XuCiqeKXqu8',
+        videoId: videoId,
         playerVars: {
           'playsinline': 1,
           'controls': 0, // Hide default controls
@@ -59,7 +69,38 @@ export default function Home() {
         }
       });
     };
-  }, []);
+  }, [videoSource, videoId]);
+
+  // Handle custom video player time updates (for upload only)
+  useEffect(() => {
+    if (videoSource !== 'upload' || !videoRef.current) return;
+
+    const video = videoRef.current;
+
+    const updateTime = () => {
+      setCurrentTime(video.currentTime);
+    };
+
+    const updateDuration = () => {
+      setDuration(video.duration);
+    };
+
+    const updatePlayState = () => {
+      setIsPlaying(!video.paused);
+    };
+
+    video.addEventListener('timeupdate', updateTime);
+    video.addEventListener('loadedmetadata', updateDuration);
+    video.addEventListener('play', updatePlayState);
+    video.addEventListener('pause', updatePlayState);
+
+    return () => {
+      video.removeEventListener('timeupdate', updateTime);
+      video.removeEventListener('loadedmetadata', updateDuration);
+      video.removeEventListener('play', updatePlayState);
+      video.removeEventListener('pause', updatePlayState);
+    };
+  }, [videoSource]);
 
   const onPlayerReady = () => {
     const dur = playerRef.current.getDuration();
@@ -168,6 +209,55 @@ export default function Home() {
     return colors[Math.floor(Math.random() * colors.length)];
   };
 
+  const extractYouTubeId = (url: string): string | null => {
+    const patterns = [
+      /(?:youtube\.com\/watch\?v=|youtu\.be\/)([^&\n?#]+)/,
+      /youtube\.com\/embed\/([^&\n?#]+)/,
+    ];
+    for (const pattern of patterns) {
+      const match = url.match(pattern);
+      if (match) return match[1];
+    }
+    return null;
+  };
+
+  const handleYouTubeSubmit = () => {
+    const id = extractYouTubeId(youtubeUrl);
+    if (id) {
+      setVideoId(id);
+      setVideoSource('youtube');
+    }
+  };
+
+  const extractGoogleDriveId = (url: string): string | null => {
+    const patterns = [
+      /drive\.google\.com\/file\/d\/([^/]+)/,
+      /drive\.google\.com\/open\?id=([^&]+)/,
+    ];
+    for (const pattern of patterns) {
+      const match = url.match(pattern);
+      if (match) return match[1];
+    }
+    return null;
+  };
+
+  const handleGoogleDriveSubmit = () => {
+    const id = extractGoogleDriveId(gdriveUrl);
+    if (id) {
+      setGdriveId(id);
+      setVideoSource('gdrive');
+    }
+  };
+
+  const handleVideoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const url = URL.createObjectURL(file);
+      setUploadedVideo(url);
+      setVideoSource('upload');
+    }
+  };
+
   const addComment = () => {
     if (newComment.trim()) {
       const comment: Comment = selectedRange
@@ -197,10 +287,15 @@ export default function Home() {
   };
 
   const jumpToTime = (timestamp: number, shouldPause: boolean = false) => {
-    if (playerRef.current && playerRef.current.seekTo) {
+    if (videoSource === 'youtube' && playerRef.current && playerRef.current.seekTo) {
       playerRef.current.seekTo(timestamp, true);
       if (shouldPause) {
         playerRef.current.pauseVideo();
+      }
+    } else if (videoSource === 'upload' && videoRef.current) {
+      videoRef.current.currentTime = timestamp;
+      if (shouldPause) {
+        videoRef.current.pause();
       }
     }
   };
@@ -303,12 +398,18 @@ export default function Home() {
   };
 
   const togglePlayPause = () => {
-    if (playerRef.current) {
+    if (videoSource === 'youtube' && playerRef.current) {
       const state = playerRef.current.getPlayerState();
       if (state === 1) { // Playing
         playerRef.current.pauseVideo();
       } else {
         playerRef.current.playVideo();
+      }
+    } else if (videoSource === 'upload' && videoRef.current) {
+      if (videoRef.current.paused) {
+        videoRef.current.play();
+      } else {
+        videoRef.current.pause();
       }
     }
   };
@@ -321,15 +422,159 @@ export default function Home() {
         <div className="flex gap-6">
           {/* Main content */}
           <div className="flex-1">
-            {/* Video embed */}
-            <div className="bg-white rounded-lg shadow-lg p-4 mb-6">
-              <div
-                id="youtube-player"
-                ref={playerDivRef}
-                className="rounded"
-              />
+            {/* Video source selection */}
+            {!videoSource && (
+              <div className="bg-white rounded-lg shadow-lg p-6 mb-6">
+                <h2 className="text-xl font-semibold mb-4 text-gray-800">Choose Video Source</h2>
 
-              {/* Custom Timeline */}
+                {/* YouTube URL Input */}
+                <div className="mb-6">
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    YouTube URL
+                  </label>
+                  <div className="flex gap-3">
+                    <input
+                      type="text"
+                      value={youtubeUrl}
+                      onChange={(e) => setYoutubeUrl(e.target.value)}
+                      onKeyPress={(e) => e.key === 'Enter' && handleYouTubeSubmit()}
+                      placeholder="https://www.youtube.com/watch?v=..."
+                      className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-800"
+                    />
+                    <button
+                      onClick={handleYouTubeSubmit}
+                      className="px-6 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors font-medium"
+                    >
+                      Load
+                    </button>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-4 mb-6">
+                  <div className="flex-1 h-px bg-gray-300"></div>
+                  <span className="text-gray-500 text-sm">OR</span>
+                  <div className="flex-1 h-px bg-gray-300"></div>
+                </div>
+
+                {/* Google Drive URL Input */}
+                <div className="mb-6">
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Google Drive URL
+                  </label>
+                  <div className="flex gap-3">
+                    <input
+                      type="text"
+                      value={gdriveUrl}
+                      onChange={(e) => setGdriveUrl(e.target.value)}
+                      onKeyPress={(e) => e.key === 'Enter' && handleGoogleDriveSubmit()}
+                      placeholder="https://drive.google.com/file/d/..."
+                      className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-800"
+                    />
+                    <button
+                      onClick={handleGoogleDriveSubmit}
+                      className="px-6 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors font-medium"
+                    >
+                      Load
+                    </button>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-4 mb-6">
+                  <div className="flex-1 h-px bg-gray-300"></div>
+                  <span className="text-gray-500 text-sm">OR</span>
+                  <div className="flex-1 h-px bg-gray-300"></div>
+                </div>
+
+                {/* Video Upload */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Upload Video File
+                  </label>
+                  <input
+                    type="file"
+                    accept="video/*"
+                    onChange={handleVideoUpload}
+                    className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 cursor-pointer"
+                  />
+                </div>
+              </div>
+            )}
+
+            {/* Video embed */}
+            {videoSource && (
+              <div className="bg-white rounded-lg shadow-lg p-4 mb-6">
+                {videoSource === 'youtube' && (
+                  <div
+                    id="youtube-player"
+                    ref={playerDivRef}
+                    className="rounded"
+                  />
+                )}
+
+                {videoSource === 'upload' && uploadedVideo && (
+                  <div className="relative rounded overflow-hidden bg-black flex items-center justify-center" style={{ height: '480px' }}>
+                    <video
+                      ref={videoRef}
+                      src={uploadedVideo}
+                      className="max-h-full max-w-full"
+                      style={{ objectFit: 'contain' }}
+                      onClick={togglePlayPause}
+                    />
+                    {/* Play/Pause overlay */}
+                    <div
+                      className="absolute inset-0 flex items-center justify-center pointer-events-none"
+                      style={{ opacity: isPlaying ? 0 : 1, transition: 'opacity 0.3s' }}
+                    >
+                      <div className="w-20 h-20 bg-black/50 rounded-full flex items-center justify-center">
+                        <svg
+                          className="w-10 h-10 text-white ml-1"
+                          fill="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path d="M8 5v14l11-7z" />
+                        </svg>
+                      </div>
+                    </div>
+                    {/* Pause icon overlay */}
+                    {isPlaying && (
+                      <div
+                        className="absolute inset-0 flex items-center justify-center pointer-events-none opacity-0 hover:opacity-100 transition-opacity"
+                        style={{ transition: 'opacity 0.3s' }}
+                      >
+                        <div className="w-20 h-20 bg-black/50 rounded-full flex items-center justify-center">
+                          <svg
+                            className="w-10 h-10 text-white"
+                            fill="currentColor"
+                            viewBox="0 0 24 24"
+                          >
+                            <path d="M6 4h4v16H6V4zm8 0h4v16h-4V4z" />
+                          </svg>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {videoSource === 'gdrive' && gdriveId && (
+                  <div className="rounded overflow-hidden bg-black" style={{ height: '480px' }}>
+                    <iframe
+                      src={`https://drive.google.com/file/d/${gdriveId}/preview`}
+                      width="100%"
+                      height="480"
+                      allow="autoplay"
+                      className="rounded"
+                      title="Google Drive Video"
+                    />
+                    <div className="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+                      <p className="text-sm text-yellow-800">
+                        <strong>Note:</strong> Google Drive videos use their built-in player. Timeline and custom controls are not available for this video source.
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+              {/* Custom Timeline - hidden for Google Drive */}
+              {videoSource !== 'gdrive' && (
               <div className="mt-4">
                 {/* Hover tooltip */}
                 {hoveredComment && (
@@ -452,9 +697,12 @@ export default function Home() {
                   )}
                 </div>
               </div>
+              )}
             </div>
+            )}
 
             {/* Add comment interface */}
+            {videoSource && videoSource !== 'gdrive' && (
             <div className="bg-white rounded-lg shadow-lg p-6 mb-6">
               <h2 className="text-xl font-semibold mb-4 text-gray-800">Add Comment</h2>
               <div className="flex gap-3">
@@ -480,8 +728,10 @@ export default function Home() {
                 }
               </div>
             </div>
+            )}
 
             {/* Comments list */}
+            {videoSource && videoSource !== 'gdrive' && (
             <div className="bg-white rounded-lg shadow-lg p-6">
               <h2 className="text-xl font-semibold mb-4 text-gray-800">Comments</h2>
               {comments.length === 0 ? (
@@ -515,9 +765,11 @@ export default function Home() {
                 </div>
               )}
             </div>
+            )}
           </div>
 
           {/* Sidebar */}
+          {videoSource && videoSource !== 'gdrive' && (
           <div className="w-80">
             <div className="bg-white rounded-lg shadow-lg p-6 sticky top-8">
               <h2 className="text-xl font-semibold mb-4 text-gray-800">Timestamp Comments</h2>
@@ -557,6 +809,7 @@ export default function Home() {
               </div>
             </div>
           </div>
+          )}
         </div>
       </div>
     </div>
