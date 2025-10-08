@@ -71,9 +71,9 @@ export default function Home() {
     };
   }, [videoSource, videoId]);
 
-  // Handle custom video player time updates (for upload only)
+  // Handle custom video player time updates (for upload and gdrive)
   useEffect(() => {
-    if (videoSource !== 'upload' || !videoRef.current) return;
+    if ((videoSource !== 'upload' && videoSource !== 'gdrive') || !videoRef.current) return;
 
     const video = videoRef.current;
 
@@ -292,7 +292,7 @@ export default function Home() {
       if (shouldPause) {
         playerRef.current.pauseVideo();
       }
-    } else if (videoSource === 'upload' && videoRef.current) {
+    } else if ((videoSource === 'upload' || videoSource === 'gdrive') && videoRef.current) {
       videoRef.current.currentTime = timestamp;
       if (shouldPause) {
         videoRef.current.pause();
@@ -405,7 +405,7 @@ export default function Home() {
       } else {
         playerRef.current.playVideo();
       }
-    } else if (videoSource === 'upload' && videoRef.current) {
+    } else if ((videoSource === 'upload' || videoSource === 'gdrive') && videoRef.current) {
       if (videoRef.current.paused) {
         videoRef.current.play();
       } else {
@@ -556,25 +556,50 @@ export default function Home() {
                 )}
 
                 {videoSource === 'gdrive' && gdriveId && (
-                  <div className="rounded overflow-hidden bg-black" style={{ height: '480px' }}>
-                    <iframe
-                      src={`https://drive.google.com/file/d/${gdriveId}/preview`}
-                      width="100%"
-                      height="480"
-                      allow="autoplay"
-                      className="rounded"
-                      title="Google Drive Video"
+                  <div className="relative rounded overflow-hidden bg-black flex items-center justify-center" style={{ height: '480px' }}>
+                    <video
+                      ref={videoRef}
+                      src={`https://drive.google.com/uc?export=download&id=${gdriveId}`}
+                      className="max-h-full max-w-full"
+                      style={{ objectFit: 'contain' }}
+                      onClick={togglePlayPause}
                     />
-                    <div className="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
-                      <p className="text-sm text-yellow-800">
-                        <strong>Note:</strong> Google Drive videos use their built-in player. Timeline and custom controls are not available for this video source.
-                      </p>
+                    {/* Play/Pause overlay */}
+                    <div
+                      className="absolute inset-0 flex items-center justify-center pointer-events-none"
+                      style={{ opacity: isPlaying ? 0 : 1, transition: 'opacity 0.3s' }}
+                    >
+                      <div className="w-20 h-20 bg-black/50 rounded-full flex items-center justify-center">
+                        <svg
+                          className="w-10 h-10 text-white ml-1"
+                          fill="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path d="M8 5v14l11-7z" />
+                        </svg>
+                      </div>
                     </div>
+                    {/* Pause icon overlay */}
+                    {isPlaying && (
+                      <div
+                        className="absolute inset-0 flex items-center justify-center pointer-events-none opacity-0 hover:opacity-100 transition-opacity"
+                        style={{ transition: 'opacity 0.3s' }}
+                      >
+                        <div className="w-20 h-20 bg-black/50 rounded-full flex items-center justify-center">
+                          <svg
+                            className="w-10 h-10 text-white"
+                            fill="currentColor"
+                            viewBox="0 0 24 24"
+                          >
+                            <path d="M6 4h4v16H6V4zm8 0h4v16h-4V4z" />
+                          </svg>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
 
-              {/* Custom Timeline - hidden for Google Drive */}
-              {videoSource !== 'gdrive' && (
+              {/* Custom Timeline */}
               <div className="mt-4">
                 {/* Hover tooltip */}
                 {hoveredComment && (
@@ -697,12 +722,11 @@ export default function Home() {
                   )}
                 </div>
               </div>
-              )}
             </div>
             )}
 
             {/* Add comment interface */}
-            {videoSource && videoSource !== 'gdrive' && (
+            {videoSource && (
             <div className="bg-white rounded-lg shadow-lg p-6 mb-6">
               <h2 className="text-xl font-semibold mb-4 text-gray-800">Add Comment</h2>
               <div className="flex gap-3">
@@ -731,7 +755,7 @@ export default function Home() {
             )}
 
             {/* Comments list */}
-            {videoSource && videoSource !== 'gdrive' && (
+            {videoSource && (
             <div className="bg-white rounded-lg shadow-lg p-6">
               <h2 className="text-xl font-semibold mb-4 text-gray-800">Comments</h2>
               {comments.length === 0 ? (
@@ -769,7 +793,7 @@ export default function Home() {
           </div>
 
           {/* Sidebar */}
-          {videoSource && videoSource !== 'gdrive' && (
+          {videoSource && (
           <div className="w-80">
             <div className="bg-white rounded-lg shadow-lg p-6 sticky top-8">
               <h2 className="text-xl font-semibold mb-4 text-gray-800">Timestamp Comments</h2>
