@@ -9,6 +9,7 @@ interface Comment {
   text: string;
   timeString: string;
   displayId?: string;
+  color?: string;
 }
 
 declare global {
@@ -28,10 +29,12 @@ export default function Home() {
   const [isDragging, setIsDragging] = useState(false);
   const [dragStart, setDragStart] = useState<number | null>(null);
   const [hasDragged, setHasDragged] = useState(false);
+  const [hoveredComment, setHoveredComment] = useState<Comment | null>(null);
 
   const playerRef = useRef<any>(null);
   const playerDivRef = useRef<HTMLDivElement>(null);
   const timelineRef = useRef<HTMLDivElement>(null);
+  const removalTimeoutsRef = useRef<Map<string, NodeJS.Timeout>>(new Map());
 
   // Load YouTube IFrame API
   useEffect(() => {
@@ -83,26 +86,52 @@ export default function Home() {
       return false;
     });
 
-    if (matchingComments.length > 0) {
-      const newDisplayedComments = matchingComments.map(comment => ({
-        ...comment,
-        displayId: `${comment.id}-${Date.now()}`
-      }));
+    // Get IDs of currently matching comments
+    const matchingIds = new Set(matchingComments.map(c => c.id));
 
-      setDisplayedComments(prev => {
-        const existingIds = new Set(prev.map(c => c.id));
-        const toAdd = newDisplayedComments.filter(c => !existingIds.has(c.id));
-        return [...prev, ...toAdd];
+    // Add new matching comments and clear any pending removal timeouts
+    setDisplayedComments(prev => {
+      const existingIds = new Set(prev.map(c => c.id));
+      const toAdd = matchingComments
+        .filter(c => !existingIds.has(c.id))
+        .map(comment => ({
+          ...comment,
+          displayId: `${comment.id}-${Date.now()}`
+        }));
+
+      // Clear removal timeouts for comments that are now matching again
+      matchingIds.forEach(id => {
+        const timeout = removalTimeoutsRef.current.get(id);
+        if (timeout) {
+          clearTimeout(timeout);
+          removalTimeoutsRef.current.delete(id);
+        }
       });
 
-      newDisplayedComments.forEach(comment => {
-        setTimeout(() => {
-          setDisplayedComments(prev =>
-            prev.filter(c => c.displayId !== comment.displayId)
-          );
-        }, 4000);
+      return [...prev, ...toAdd];
+    });
+
+    // Schedule removal for comments that are no longer matching (with 4 second delay)
+    setDisplayedComments(prev => {
+      prev.forEach(comment => {
+        const isMatching = matchingIds.has(comment.id);
+        const hasTimeout = removalTimeoutsRef.current.has(comment.id);
+
+        // If comment is no longer matching and doesn't have a pending removal timeout
+        if (!isMatching && !hasTimeout) {
+          const timeout = setTimeout(() => {
+            setDisplayedComments(current =>
+              current.filter(c => c.displayId !== comment.displayId)
+            );
+            removalTimeoutsRef.current.delete(comment.id);
+          }, 4000);
+
+          removalTimeoutsRef.current.set(comment.id, timeout);
+        }
       });
-    }
+
+      return prev;
+    });
   }, [currentTime, comments]);
 
   const formatTime = (seconds: number): string => {
@@ -120,6 +149,25 @@ export default function Home() {
     return `${formatTime(start)} - ${formatTime(end)}`;
   };
 
+  const generateRandomColor = (): string => {
+    const colors = [
+      '#ef4444', // red
+      '#f97316', // orange
+      '#f59e0b', // amber
+      '#84cc16', // lime
+      '#10b981', // emerald
+      '#14b8a6', // teal
+      '#06b6d4', // cyan
+      '#3b82f6', // blue
+      '#6366f1', // indigo
+      '#8b5cf6', // violet
+      '#a855f7', // purple
+      '#ec4899', // pink
+      '#f43f5e', // rose
+    ];
+    return colors[Math.floor(Math.random() * colors.length)];
+  };
+
   const addComment = () => {
     if (newComment.trim()) {
       const comment: Comment = selectedRange
@@ -127,13 +175,15 @@ export default function Home() {
             id: Date.now().toString(),
             timeRange: selectedRange,
             text: newComment,
-            timeString: formatTimeRange(selectedRange.start, selectedRange.end)
+            timeString: formatTimeRange(selectedRange.start, selectedRange.end),
+            color: generateRandomColor()
           }
         : {
             id: Date.now().toString(),
             timestamp: currentTime,
             text: newComment,
-            timeString: formatTime(currentTime)
+            timeString: formatTime(currentTime),
+            color: generateRandomColor()
           };
 
       setComments(prev => [...prev, comment].sort((a, b) => {
@@ -281,6 +331,31 @@ export default function Home() {
 
               {/* Custom Timeline */}
               <div className="mt-4">
+                {/* Hover tooltip */}
+                {hoveredComment && (
+                  <div className="relative mb-2">
+                    <div
+                      className="absolute bottom-0 px-3 py-2 rounded-lg shadow-lg text-sm max-w-xs z-50 animate-fade-in"
+                      style={{
+                        backgroundColor: hoveredComment.color,
+                        color: 'white',
+                        left: hoveredComment.timeRange
+                          ? `${((hoveredComment.timeRange.start / duration) * 100)}%`
+                          : `${((hoveredComment.timestamp ?? 0) / duration) * 100}%`,
+                        transform: 'translateX(-50%)'
+                      }}
+                    >
+                      <div className="font-semibold mb-1">{hoveredComment.timeString}</div>
+                      <div className="text-white/90">{hoveredComment.text}</div>
+                      {/* Arrow pointing down */}
+                      <div
+                        className="absolute top-full left-1/2 -translate-x-1/2 w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent"
+                        style={{ borderTopColor: hoveredComment.color }}
+                      />
+                    </div>
+                  </div>
+                )}
+
                 <div
                   ref={timelineRef}
                   className="relative h-12 bg-gray-200 rounded-lg cursor-pointer hover:bg-gray-300 transition-colors"
@@ -289,23 +364,69 @@ export default function Home() {
                   onMouseMove={handleMouseMove}
                   style={{ userSelect: 'none' }}
                 >
+                  {/* Comment labels on timeline */}
+                  {comments.map(comment => {
+                    if (comment.timeRange && duration > 0) {
+                      const startPercent = (comment.timeRange.start / duration) * 100;
+                      const widthPercent = ((comment.timeRange.end - comment.timeRange.start) / duration) * 100;
+                      return (
+                        <div
+                          key={comment.id}
+                          className="absolute top-0 h-full opacity-40 pointer-events-auto border-l-2 border-r-2 hover:opacity-60 transition-opacity cursor-pointer z-10"
+                          style={{
+                            left: `${startPercent}%`,
+                            width: `${widthPercent}%`,
+                            backgroundColor: comment.color,
+                            borderColor: comment.color
+                          }}
+                          onMouseEnter={() => setHoveredComment(comment)}
+                          onMouseLeave={() => setHoveredComment(null)}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            const time = getTimeFromPosition(e.clientX);
+                            jumpToTime(time, false);
+                          }}
+                        />
+                      );
+                    } else if (comment.timestamp !== undefined && duration > 0) {
+                      const position = (comment.timestamp / duration) * 100;
+                      return (
+                        <div
+                          key={comment.id}
+                          className="absolute top-0 w-1 h-full pointer-events-auto hover:w-2 transition-all cursor-pointer z-10"
+                          style={{
+                            left: `${position}%`,
+                            backgroundColor: comment.color
+                          }}
+                          onMouseEnter={() => setHoveredComment(comment)}
+                          onMouseLeave={() => setHoveredComment(null)}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            jumpToTime(comment.timestamp ?? 0, false);
+                          }}
+                        />
+                      );
+                    }
+                    return null;
+                  })}
+
                   {/* Progress bar */}
                   <div
-                    className="absolute top-0 left-0 h-full bg-blue-400 rounded-lg pointer-events-none"
+                    className="absolute top-0 left-0 h-full bg-blue-400 rounded-lg pointer-events-none z-0"
                     style={{ width: `${duration ? (currentTime / duration) * 100 : 0}%` }}
                   />
 
                   {/* Selected range highlight */}
                   {selectedRange && (
                     <div
-                      className="absolute top-0 h-full bg-yellow-400 opacity-60 pointer-events-none border-2 border-yellow-600"
+                      className="absolute top-0 h-full bg-yellow-400 opacity-60 pointer-events-none border-2 border-yellow-600 z-20"
                       style={getSelectionStyle()}
                     />
                   )}
 
                   {/* Current time indicator */}
                   <div
-                    className="absolute top-0 w-1 h-full bg-red-500 pointer-events-none"
+                    className="absolute top-0 w-1 h-full bg-red-500 pointer-events-none z-30"
                     style={{ left: `${duration ? (currentTime / duration) * 100 : 0}%` }}
                   />
 
@@ -318,12 +439,12 @@ export default function Home() {
 
                 {/* Playback controls */}
                 <div className="flex items-center gap-4 mt-3">
-                  <button
+                  {/* <button
                     onClick={togglePlayPause}
                     className="px-4 py-2 bg-gray-700 text-white rounded-lg hover:bg-gray-800 transition-colors font-medium"
                   >
                     Play/Pause
-                  </button>
+                  </button> */}
                   {selectedRange && (
                     <div className="text-sm text-gray-600">
                       Selected: {formatTimeRange(selectedRange.start, selectedRange.end)}
@@ -371,11 +492,12 @@ export default function Home() {
                     <div
                       key={comment.id}
                       className="border border-gray-200 rounded-lg p-4 hover:bg-gray-50 transition-colors"
+                      style={{ borderLeftWidth: '4px', borderLeftColor: comment.color }}
                     >
                       <div className="flex items-start justify-between">
                         <div className="flex-1">
                           <button
-                            onClick={() => jumpToTime(comment.timestamp ?? comment.timeRange?.start ?? 0, true)}
+                            onClick={() => jumpToTime(comment.timestamp ?? comment.timeRange?.start ?? 0, false)}
                             className="text-blue-500 hover:text-blue-700 font-mono text-sm font-semibold mb-2 hover:underline flex items-center gap-2"
                           >
                             {comment.timeRange && (
