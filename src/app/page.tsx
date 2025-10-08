@@ -422,87 +422,94 @@ export default function Home() {
         <div className="flex gap-6">
           {/* Main content */}
           <div className="flex-1">
-            {/* Video source selection */}
-            {!videoSource && (
-              <div className="bg-white rounded-lg shadow-lg p-6 mb-6">
-                <h2 className="text-xl font-semibold mb-4 text-gray-800">Choose Video Source</h2>
-
-                {/* YouTube URL Input */}
-                <div className="mb-6">
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    YouTube URL
-                  </label>
-                  <div className="flex gap-3">
-                    <input
-                      type="text"
-                      value={youtubeUrl}
-                      onChange={(e) => setYoutubeUrl(e.target.value)}
-                      onKeyPress={(e) => e.key === 'Enter' && handleYouTubeSubmit()}
-                      placeholder="https://www.youtube.com/watch?v=..."
-                      className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-800"
-                    />
-                    <button
-                      onClick={handleYouTubeSubmit}
-                      className="px-6 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors font-medium"
-                    >
-                      Load
-                    </button>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-4 mb-6">
-                  <div className="flex-1 h-px bg-gray-300"></div>
-                  <span className="text-gray-500 text-sm">OR</span>
-                  <div className="flex-1 h-px bg-gray-300"></div>
-                </div>
-
-                {/* Google Drive URL Input */}
-                <div className="mb-6">
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Google Drive URL
-                  </label>
-                  <div className="flex gap-3">
-                    <input
-                      type="text"
-                      value={gdriveUrl}
-                      onChange={(e) => setGdriveUrl(e.target.value)}
-                      onKeyPress={(e) => e.key === 'Enter' && handleGoogleDriveSubmit()}
-                      placeholder="https://drive.google.com/file/d/..."
-                      className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-800"
-                    />
-                    <button
-                      onClick={handleGoogleDriveSubmit}
-                      className="px-6 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors font-medium"
-                    >
-                      Load
-                    </button>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-4 mb-6">
-                  <div className="flex-1 h-px bg-gray-300"></div>
-                  <span className="text-gray-500 text-sm">OR</span>
-                  <div className="flex-1 h-px bg-gray-300"></div>
-                </div>
-
-                {/* Video Upload */}
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Upload Video File
-                  </label>
-                  <input
-                    type="file"
-                    accept="video/*"
-                    onChange={handleVideoUpload}
-                    className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 cursor-pointer"
-                  />
-                </div>
-              </div>
-            )}
-
             {/* Video embed */}
-            {videoSource && (
-              <div className="bg-white rounded-lg shadow-lg p-4 mb-6">
+            <div className="bg-white rounded-lg shadow-lg p-4 mb-6">
+              {!videoSource ? (
+                /* Video source selection inside the player window */
+                <div className="flex items-center justify-center bg-gray-100 rounded" style={{ height: '480px' }}>
+                  <div className="max-w-md w-full p-6">
+                    <h2 className="text-xl font-semibold mb-4 text-gray-800 text-center">Choose Video Source</h2>
+
+                    {/* YouTube URL Input */}
+                    <div className="mb-4">
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        YouTube URL
+                      </label>
+                      <div className="flex gap-2">
+                        <input
+                          type="text"
+                          value={youtubeUrl}
+                          onChange={(e) => setYoutubeUrl(e.target.value)}
+                          onKeyPress={(e) => e.key === 'Enter' && handleYouTubeSubmit()}
+                          placeholder="https://www.youtube.com/watch?v=..."
+                          className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-800 text-sm"
+                        />
+                        <button
+                          onClick={handleYouTubeSubmit}
+                          className="px-4 py-2 text-white rounded-lg transition-colors font-medium text-sm"
+                          style={{ backgroundColor: '#00875F' }}
+                          onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#006644'}
+                          onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#00875F'}
+                        >
+                          Load
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-3 mb-4">
+                      <div className="flex-1 h-px bg-gray-300"></div>
+                      <span className="text-gray-500 text-xs">OR</span>
+                      <div className="flex-1 h-px bg-gray-300"></div>
+                    </div>
+
+                    {/* Google Drive URL Input */}
+                    <div className="mb-4">
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Google Drive URL
+                      </label>
+                      <div className="flex gap-2">
+                        <input
+                          type="text"
+                          value={gdriveUrl}
+                          onChange={(e) => setGdriveUrl(e.target.value)}
+                          onKeyPress={(e) => e.key === 'Enter' && handleGoogleDriveSubmit()}
+                          placeholder="https://drive.google.com/file/d/..."
+                          className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-800 text-sm"
+                        />
+                        <button
+                          onClick={handleGoogleDriveSubmit}
+                          className="px-4 py-2 text-white rounded-lg transition-colors font-medium text-sm"
+                          style={{ backgroundColor: '#00875F' }}
+                          onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#006644'}
+                          onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#00875F'}
+                        >
+                          Load
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-3 mb-4">
+                      <div className="flex-1 h-px bg-gray-300"></div>
+                      <span className="text-gray-500 text-xs">OR</span>
+                      <div className="flex-1 h-px bg-gray-300"></div>
+                    </div>
+
+                    {/* Video Upload */}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Upload Video File
+                      </label>
+                      <input
+                        type="file"
+                        accept="video/*"
+                        onChange={handleVideoUpload}
+                        className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-3 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 cursor-pointer"
+                      />
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <>
                 {videoSource === 'youtube' && (
                   <div
                     id="youtube-player"
@@ -691,8 +698,9 @@ export default function Home() {
                   )}
                 </div>
               </div>
+              </>
+              )}
             </div>
-            )}
 
             {/* Add comment interface */}
             {videoSource && (
@@ -709,7 +717,10 @@ export default function Home() {
                 />
                 <button
                   onClick={addComment}
-                  className="px-6 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors font-medium"
+                  className="px-6 py-2 text-white rounded-lg transition-colors font-medium"
+                  style={{ backgroundColor: '#00875F' }}
+                  onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#006644'}
+                  onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#00875F'}
                 >
                   Add
                 </button>
