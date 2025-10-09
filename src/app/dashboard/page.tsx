@@ -56,6 +56,31 @@ export default function DashboardPage() {
     }
   };
 
+  const deleteVideo = async (videoId: string, e: React.MouseEvent) => {
+    e.preventDefault(); // Prevent navigation to video page
+    e.stopPropagation();
+
+    if (!confirm('Are you sure you want to delete this video? This action cannot be undone.')) {
+      return;
+    }
+
+    try {
+      const res = await fetch(`/api/videos/${videoId}`, {
+        method: 'DELETE',
+      });
+
+      if (!res.ok) {
+        throw new Error('Failed to delete video');
+      }
+
+      // Remove video from state
+      setVideos(prev => prev.filter(v => v._id !== videoId));
+    } catch (err: any) {
+      console.error('Delete video error:', err);
+      alert('Failed to delete video: ' + err.message);
+    }
+  };
+
   const getThumbnail = (video: Video) => {
     if (video.thumbnail) return video.thumbnail;
     if (video.videoSource === 'youtube' && video.videoId) {
@@ -136,28 +161,38 @@ export default function DashboardPage() {
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {videos.map((video) => (
-              <Link
-                key={video._id}
-                href={`/video/${video._id}`}
-                className="bg-white rounded-lg shadow-md overflow-hidden hover:shadow-lg transition-shadow"
-              >
-                <div className="relative aspect-video bg-gray-200">
-                  <img
-                    src={getThumbnail(video)}
-                    alt={video.title}
-                    className="w-full h-full object-cover"
-                  />
-                  <div className="absolute top-2 right-2">
-                    {getSourceBadge(video.videoSource)}
+              <div key={video._id} className="bg-white rounded-lg shadow-md overflow-hidden hover:shadow-lg transition-shadow relative group">
+                <Link href={`/video/${video._id}`}>
+                  <div className="relative aspect-video bg-gray-200">
+                    <img
+                      src={getThumbnail(video)}
+                      alt={video.title}
+                      className="w-full h-full object-cover"
+                    />
+                    <div className="absolute top-2 right-2">
+                      {getSourceBadge(video.videoSource)}
+                    </div>
                   </div>
-                </div>
-                <div className="p-4">
-                  <h3 className="font-semibold text-gray-800 mb-1 truncate">{video.title}</h3>
-                  <p className="text-sm text-gray-500">
-                    {new Date(video.createdAt).toLocaleDateString()}
-                  </p>
-                </div>
-              </Link>
+                  <div className="p-4 flex flex-row items-center w-full justify-between">
+                    <div className='flex flex-col'>
+                      <h3 className="font-semibold text-gray-800 mb-1 truncate">{video.title}</h3>
+                      <p className="text-sm text-gray-500">
+                        {new Date(video.createdAt).toLocaleDateString()}
+                      </p>
+                    </div>
+                    <button
+                      onClick={(e) => deleteVideo(video._id, e)}
+                      className="h-fit transition-opacity hover:opacity-50"
+                      title="Delete video"
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                        <path fillRule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clipRule="evenodd" />
+                      </svg>
+                    </button>
+                  </div>
+                </Link>
+
+              </div>
             ))}
           </div>
         )}

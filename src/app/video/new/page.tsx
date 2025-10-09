@@ -202,14 +202,15 @@ export default function NewVideoPage() {
               </div>
             </div>
 
-            <div className="flex items-center gap-3 mb-4">
+            {/* Commented out for now - Google Drive and File Upload */}
+            {/* <div className="flex items-center gap-3 mb-4">
               <div className="flex-1 h-px bg-gray-300"></div>
               <span className="text-gray-500 text-xs">OR</span>
               <div className="flex-1 h-px bg-gray-300"></div>
-            </div>
+            </div> */}
 
             {/* Google Drive URL Input */}
-            <div className="mb-4">
+            {/* <div className="mb-4">
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 Google Drive URL
               </label>
@@ -233,16 +234,16 @@ export default function NewVideoPage() {
                   {loading ? 'Creating...' : 'Create'}
                 </button>
               </div>
-            </div>
+            </div> */}
 
-            <div className="flex items-center gap-3 mb-4">
+            {/* <div className="flex items-center gap-3 mb-4">
               <div className="flex-1 h-px bg-gray-300"></div>
               <span className="text-gray-500 text-xs">OR</span>
               <div className="flex-1 h-px bg-gray-300"></div>
-            </div>
+            </div> */}
 
             {/* Video Upload */}
-            <div>
+            {/* <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 Upload Video File
               </label>
@@ -255,7 +256,7 @@ export default function NewVideoPage() {
               <p className="mt-2 text-xs text-gray-500">
                 Note: File uploads require cloud storage configuration
               </p>
-            </div>
+            </div> */}
           </div>
         </div>
       </div>
