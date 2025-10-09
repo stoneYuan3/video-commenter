@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 
 interface Comment {
@@ -65,6 +65,8 @@ export default function VideoPage() {
   const timelineRef = useRef<HTMLDivElement>(null);
   const removalTimeoutsRef = useRef<Map<string, NodeJS.Timeout>>(new Map());
   const ytApiLoadedRef = useRef(false);
+  const playerInitializedRef = useRef(false);
+  const currentVideoIdRef = useRef<string>('');
 
   // Fetch video and comments on mount
   useEffect(() => {
@@ -128,13 +130,33 @@ export default function VideoPage() {
       // Cleanup on unmount
       if (playerRef.current && playerRef.current.destroy) {
         playerRef.current.destroy();
+        playerRef.current = null;
       }
+      playerInitializedRef.current = false;
+      currentVideoIdRef.current = '';
     };
   }, []);
 
+  // Reset initialization flag when video changes
+  useEffect(() => {
+    if (video?.videoSource !== 'youtube') {
+      if (playerRef.current && playerRef.current.destroy) {
+        playerRef.current.destroy();
+        playerRef.current = null;
+      }
+      playerInitializedRef.current = false;
+      currentVideoIdRef.current = '';
+    }
+  }, [video?.videoSource, video?.videoId]);
+
   // Callback ref for YouTube player div - called when div is rendered
-  const youtubePlayerCallback = (node: HTMLDivElement | null) => {
+  const youtubePlayerCallback = useCallback((node: HTMLDivElement | null) => {
     if (!node || !video || video.videoSource !== 'youtube' || !video.videoId) {
+      return;
+    }
+
+    // Check if already initialized with the same video
+    if (playerInitializedRef.current && currentVideoIdRef.current === video.videoId && playerRef.current) {
       return;
     }
 
@@ -160,6 +182,8 @@ export default function VideoPage() {
             'onReady': onPlayerReady,
           }
         });
+        playerInitializedRef.current = true;
+        currentVideoIdRef.current = video.videoId || '';
       } catch (error) {
         console.error('Error creating YouTube player:', error);
       }
@@ -180,7 +204,7 @@ export default function VideoPage() {
       // Cleanup interval after 10 seconds
       setTimeout(() => clearInterval(checkInterval), 10000);
     }
-  };
+  }, [video]);
 
   const onPlayerReady = () => {
     const dur = playerRef.current.getDuration();
