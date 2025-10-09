@@ -61,10 +61,10 @@ export default function VideoPage() {
   const [editText, setEditText] = useState('');
 
   const playerRef = useRef<any>(null);
-  const playerDivRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const timelineRef = useRef<HTMLDivElement>(null);
   const removalTimeoutsRef = useRef<Map<string, NodeJS.Timeout>>(new Map());
+  const ytApiLoadedRef = useRef(false);
 
   // Fetch video and comments on mount
   useEffect(() => {
@@ -88,6 +88,7 @@ export default function VideoPage() {
         throw new Error('Failed to fetch video');
       }
       const videoData = await videoRes.json();
+      console.log('Fetched video data:', videoData.video);
       setVideo(videoData.video);
 
       // Get current user ID from the video owner (simple way)
@@ -107,37 +108,45 @@ export default function VideoPage() {
     }
   };
 
-  // Load YouTube IFrame API
+  // Load YouTube IFrame API on mount
   useEffect(() => {
-    if (!video || video.videoSource !== 'youtube') return;
-    // Check if YouTube API is already loaded
-    if (window.YT && window.YT.Player) {
-      // API already loaded, create player directly
-      playerRef.current = new window.YT.Player('youtube-player', {
-        height: '480',
-        width: '100%',
-        videoId: video.videoId,
-        playerVars: {
-          'playsinline': 1,
-          'controls': 0,
-          'modestbranding': 1,
-          'rel': 0
-        },
-        events: {
-          'onReady': onPlayerReady,
-        }
-      });
-    } else {
-      // Load the API script
-      if (!document.querySelector('script[src*="youtube.com/iframe_api"]')) {
-        const tag = document.createElement('script');
-        tag.src = 'https://www.youtube.com/iframe_api';
-        const firstScriptTag = document.getElementsByTagName('script')[0];
-        firstScriptTag.parentNode?.insertBefore(tag, firstScriptTag);
-      }
+    // Load the API script if not already present
+    if (!document.querySelector('script[src*="youtube.com/iframe_api"]')) {
+      const tag = document.createElement('script');
+      tag.src = 'https://www.youtube.com/iframe_api';
+      tag.async = true;
+      const firstScriptTag = document.getElementsByTagName('script')[0];
+      firstScriptTag.parentNode?.insertBefore(tag, firstScriptTag);
+    }
 
-      window.onYouTubeIframeAPIReady = () => {
-        playerRef.current = new window.YT.Player('youtube-player', {
+    // Set up callback for when API loads
+    window.onYouTubeIframeAPIReady = () => {
+      ytApiLoadedRef.current = true;
+    };
+
+    return () => {
+      // Cleanup on unmount
+      if (playerRef.current && playerRef.current.destroy) {
+        playerRef.current.destroy();
+      }
+    };
+  }, []);
+
+  // Callback ref for YouTube player div - called when div is rendered
+  const youtubePlayerCallback = (node: HTMLDivElement | null) => {
+    if (!node || !video || video.videoSource !== 'youtube' || !video.videoId) {
+      return;
+    }
+
+    // Destroy existing player if any
+    if (playerRef.current && playerRef.current.destroy) {
+      playerRef.current.destroy();
+      playerRef.current = null;
+    }
+
+    const createPlayer = () => {
+      try {
+        playerRef.current = new window.YT.Player(node, {
           height: '480',
           width: '100%',
           videoId: video.videoId,
@@ -151,9 +160,27 @@ export default function VideoPage() {
             'onReady': onPlayerReady,
           }
         });
-      };
+      } catch (error) {
+        console.error('Error creating YouTube player:', error);
+      }
+    };
+
+    // Check if YouTube API is ready
+    if (window.YT && window.YT.Player) {
+      createPlayer();
+    } else {
+      // Wait for API to load
+      const checkInterval = setInterval(() => {
+        if (window.YT && window.YT.Player) {
+          clearInterval(checkInterval);
+          createPlayer();
+        }
+      }, 100);
+
+      // Cleanup interval after 10 seconds
+      setTimeout(() => clearInterval(checkInterval), 10000);
     }
-  }, [video]);
+  };
 
   const onPlayerReady = () => {
     const dur = playerRef.current.getDuration();
@@ -528,8 +555,7 @@ export default function VideoPage() {
             <div className="bg-white rounded-lg shadow-lg p-4 mb-6">
               {video.videoSource === 'youtube' && (
                 <div
-                  id="youtube-player"
-                  ref={playerDivRef}
+                  ref={youtubePlayerCallback}
                   className="rounded"
                 />
               )}
