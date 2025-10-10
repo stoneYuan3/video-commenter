@@ -123,7 +123,9 @@ export default function DashboardPage() {
       }
 
       const data = await res.json();
-      setVideos(prev => prev.map(v => v._id === videoId ? data.video : v));
+      // Update both video lists
+      setAllVideos(prev => prev.map(v => v._id === videoId ? data.video : v));
+      setMyVideos(prev => prev.map(v => v._id === videoId ? data.video : v));
       setShowPermissionModal(false);
     } catch (err: any) {
       console.error('Update permission error:', err);
@@ -147,7 +149,9 @@ export default function DashboardPage() {
       }
 
       const data = await res.json();
-      setVideos(prev => prev.map(v => v._id === selectedVideo._id ? data.video : v));
+      // Update both video lists
+      setAllVideos(prev => prev.map(v => v._id === selectedVideo._id ? data.video : v));
+      setMyVideos(prev => prev.map(v => v._id === selectedVideo._id ? data.video : v));
       setInviteEmail('');
       setShowInviteModal(false);
       alert(`Successfully invited ${inviteEmail}`);
