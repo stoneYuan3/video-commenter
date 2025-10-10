@@ -11,6 +11,7 @@ export interface IVideo extends Document {
   duration: number;
   permission: 'invited-only' | 'anyone-view' | 'anyone-edit';
   invitedUsers: Types.ObjectId[];
+  lastOpenedBy: Map<string, Date>; // Map of userId -> last opened timestamp
   createdAt: Date;
   updatedAt: Date;
 }
@@ -59,6 +60,11 @@ const VideoSchema = new Schema<IVideo>(
         ref: 'User',
       }],
       default: [],
+    },
+    lastOpenedBy: {
+      type: Map,
+      of: Date,
+      default: new Map(),
     },
   },
   {

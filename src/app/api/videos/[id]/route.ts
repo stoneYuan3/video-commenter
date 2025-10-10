@@ -56,6 +56,21 @@ export async function GET(
       // Return user status for comment permissions
     }
 
+    // Track last opened time for this user
+    if (user) {
+      try {
+        // Initialize Map if it doesn't exist
+        if (!video.lastOpenedBy) {
+          video.lastOpenedBy = new Map();
+        }
+        video.lastOpenedBy.set(user.userId, new Date());
+        await video.save();
+      } catch (saveError) {
+        console.error('Error saving last opened time:', saveError);
+        // Don't fail the request if we can't save the timestamp
+      }
+    }
+
     // Return video with user permissions info
     return NextResponse.json({
       video,
