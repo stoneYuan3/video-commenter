@@ -81,6 +81,8 @@ export default function VideoPage() {
   const ytApiLoadedRef = useRef(false);
   const playerInitializedRef = useRef(false);
   const currentVideoIdRef = useRef<string>('');
+  const commentsContainerRef = useRef<HTMLDivElement>(null);
+  const commentRefs = useRef<Map<string, HTMLDivElement>>(new Map());
 
   // Fetch video and comments on mount
   useEffect(() => {
@@ -284,7 +286,7 @@ export default function VideoPage() {
     };
   }, [video]);
 
-  // Show comments when timestamp matches
+  // Show comments when timestamp matches (no delay - instant update)
   useEffect(() => {
     const matchingComments = comments.filter(comment => {
       if (comment.timestamp !== undefined) {
@@ -295,47 +297,29 @@ export default function VideoPage() {
       return false;
     });
 
-    const matchingIds = new Set(matchingComments.map(c => c._id));
+    // Clear all existing timeouts since we're updating immediately
+    removalTimeoutsRef.current.forEach(timeout => clearTimeout(timeout));
+    removalTimeoutsRef.current.clear();
 
-    setDisplayedComments(prev => {
-      const existingIds = new Set(prev.map(c => c._id));
-      const toAdd = matchingComments
-        .filter(c => !existingIds.has(c._id))
-        .map(comment => ({
-          ...comment,
-          displayId: `${comment._id}-${Date.now()}`
-        }));
+    // Auto-scroll to first matching comment if it's newly active
+    const prevDisplayedIds = new Set(displayedComments.map(c => c._id));
+    const newlyActive = matchingComments.filter(c => !prevDisplayedIds.has(c._id));
 
-      matchingIds.forEach(id => {
-        const timeout = removalTimeoutsRef.current.get(id);
-        if (timeout) {
-          clearTimeout(timeout);
-          removalTimeoutsRef.current.delete(id);
-        }
-      });
+    if (newlyActive.length > 0 && commentsContainerRef.current) {
+      const firstActiveCommentId = newlyActive[0]._id;
+      const commentElement = commentRefs.current.get(firstActiveCommentId);
+      if (commentElement) {
+        setTimeout(() => {
+          commentElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }, 100);
+      }
+    }
 
-      return [...prev, ...toAdd];
-    });
-
-    setDisplayedComments(prev => {
-      prev.forEach(comment => {
-        const isMatching = matchingIds.has(comment._id);
-        const hasTimeout = removalTimeoutsRef.current.has(comment._id);
-
-        if (!isMatching && !hasTimeout) {
-          const timeout = setTimeout(() => {
-            setDisplayedComments(current =>
-              current.filter(c => c.displayId !== comment.displayId)
-            );
-            removalTimeoutsRef.current.delete(comment._id);
-          }, 4000);
-
-          removalTimeoutsRef.current.set(comment._id, timeout);
-        }
-      });
-
-      return prev;
-    });
+    // Set displayed comments to only the currently matching ones (no delay)
+    setDisplayedComments(matchingComments.map(comment => ({
+      ...comment,
+      displayId: `${comment._id}-${Date.now()}`
+    })));
   }, [currentTime, comments]);
 
   const formatTime = (seconds: number): string => {
@@ -906,23 +890,156 @@ export default function VideoPage() {
               </div>
             </div>
 
-            {/* Add comment interface */}
-            <div className="bg-white rounded-lg shadow-lg p-6 mb-6">
-              <h2 className="text-xl font-semibold mb-4 text-gray-800">Add Comment</h2>
+          </div>
+
+          {/* Sidebar */}
+          <div className="w-96">
+            {/* Timestamp Comments Section - Same height as video section */}
+            <div
+              className="bg-white rounded-lg shadow-lg p-6 flex flex-col"
+              style={{ height: 'fit-content' }}
+            >
+              <h2 className="text-xl font-semibold mb-4 text-gray-800">Timestamp Comments</h2>
+
+              {/* Comments List with Scroll */}
+              <div
+                ref={commentsContainerRef}
+                className="flex-1 overflow-y-auto mb-4 pr-2"
+                style={{
+                  maxHeight: 'calc(100vh - 400px)',
+                  minHeight: '400px'
+                }}
+              >
+                {comments.length === 0 ? (
+                  <p className="text-gray-500 italic">No comments yet. Add one below!</p>
+                ) : (
+                  <div className="space-y-3">
+                    {comments.map(comment => {
+                      const isActive = displayedComments.some(dc => dc._id === comment._id);
+                      const isEditing = editingCommentId === comment._id;
+
+                      return (
+                        <div
+                          key={comment._id}
+                          ref={(el) => {
+                            if (el) commentRefs.current.set(comment._id, el);
+                            else commentRefs.current.delete(comment._id);
+                          }}
+                          className={`border-l-[5px] p-3 transition-all duration-200 cursor-pointer ${
+                            isActive ? 'shadow-md' : ''
+                          } hover:shadow-lg`}
+                          style={{
+                            borderLeftColor: comment.color,
+                            backgroundColor: isActive ? '#fef3c7' : '#ffffff'
+                          }}
+                          onClick={(e) => {
+                            // Don't trigger if clicking on buttons
+                            if ((e.target as HTMLElement).tagName === 'BUTTON') return;
+
+                            // Jump to the comment's timestamp/time range start
+                            const targetTime = comment.timestamp ?? comment.timeRange?.start ?? 0;
+                            jumpToTime(targetTime, false);
+
+                            // Scroll to this comment
+                            const commentElement = commentRefs.current.get(comment._id);
+                            if (commentElement) {
+                              commentElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                            }
+                          }}
+                        >
+                          {isEditing ? (
+                            <div>
+                              <input
+                                type="text"
+                                value={editText}
+                                onChange={(e) => setEditText(e.target.value)}
+                                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-800 mb-2 text-sm"
+                              />
+                              <div className="flex gap-2">
+                                <button
+                                  onClick={() => saveEdit(comment._id)}
+                                  className="px-2 py-1 text-white rounded text-xs"
+                                  style={{ backgroundColor: '#00875F' }}
+                                >
+                                  Save
+                                </button>
+                                <button
+                                  onClick={cancelEdit}
+                                  className="px-2 py-1 bg-gray-200 text-gray-700 rounded text-xs"
+                                >
+                                  Cancel
+                                </button>
+                              </div>
+                            </div>
+                          ) : (
+                            <div>
+                              <div className="flex items-start justify-between mb-2">
+                                <button
+                                  onClick={() => jumpToTime(comment.timestamp ?? comment.timeRange?.start ?? 0, false)}
+                                  className={`font-mono text-xs font-semibold hover:underline flex items-center gap-1 ${
+                                    isActive ? 'text-blue-600' : 'text-gray-600'
+                                  }`}
+                                >
+                                  {comment.timeRange && (
+                                    <span className={`px-1.5 py-0.5 rounded text-xs ${
+                                      isActive ? 'bg-yellow-200 text-yellow-800' : 'bg-gray-300 text-gray-700'
+                                    }`}>
+                                      RANGE
+                                    </span>
+                                  )}
+                                  {comment.timeString}
+                                </button>
+                                {comment.userId._id === currentUserId && (
+                                  <div className="flex gap-1">
+                                    <button
+                                      onClick={() => startEdit(comment)}
+                                      className={`text-xs ${
+                                        isActive ? 'text-blue-600 hover:text-blue-700' : 'text-gray-500 hover:text-gray-700'
+                                      }`}
+                                    >
+                                      Edit
+                                    </button>
+                                    <button
+                                      onClick={() => deleteComment(comment._id)}
+                                      className="text-xs text-red-600 hover:text-red-700"
+                                    >
+                                      Delete
+                                    </button>
+                                  </div>
+                                )}
+                              </div>
+                              <p className={`text-sm mb-1 ${
+                                isActive ? 'text-gray-900 font-medium' : 'text-gray-600'
+                              }`}>{comment.text}</p>
+                              <p className={`text-xs ${
+                                isActive ? 'text-gray-600' : 'text-gray-500'
+                              }`}>
+                                By {comment.userId.name} • {new Date(comment.createdAt).toLocaleDateString()}
+                              </p>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              {/* Add Comment UI - Compact at bottom */}
               {currentUserId ? (
-                <>
-                  <div className="flex gap-3">
+                <div className="border-t pt-4">
+                  <div className="flex gap-2 mb-2">
                     <input
                       type="text"
                       value={newComment}
                       onChange={(e) => setNewComment(e.target.value)}
                       onKeyPress={(e) => e.key === 'Enter' && addComment()}
-                      placeholder="Add a comment at the current timestamp..."
-                      className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-800"
+                      placeholder="Add a comment..."
+                      className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-800 text-sm"
                     />
                     <button
                       onClick={addComment}
-                      className="px-6 py-2 text-white rounded-lg transition-colors font-medium"
+                      className="px-4 py-2 text-white rounded-lg transition-colors font-medium text-sm"
                       style={{ backgroundColor: '#00875F' }}
                       onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#006644')}
                       onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = '#00875F')}
@@ -930,141 +1047,20 @@ export default function VideoPage() {
                       Add
                     </button>
                   </div>
-                  <div className="mt-2 text-sm text-gray-600">
+                  <div className="text-xs text-gray-600">
                     {selectedRange
-                      ? `Comment will be added to range: ${formatTimeRange(selectedRange.start, selectedRange.end)}`
-                      : `Comment will be added at: ${formatTime(currentTime)}`
+                      ? `Range: ${formatTimeRange(selectedRange.start, selectedRange.end)}`
+                      : `At: ${formatTime(currentTime)}`
                     }
                   </div>
-                </>
+                </div>
               ) : (
-                <div className="text-center py-4">
-                  <p className="text-gray-600">
+                <div className="border-t pt-4 text-center">
+                  <p className="text-gray-600 text-sm">
                     <a href="/login" className="text-blue-500 hover:underline">Log in</a> or <a href="/signup" className="text-blue-500 hover:underline">Sign up</a> to add comments
                   </p>
                 </div>
               )}
-            </div>
-
-            {/* Comments list */}
-            <div className="bg-white rounded-lg shadow-lg p-6">
-              <h2 className="text-xl font-semibold mb-4 text-gray-800">Comments</h2>
-              {comments.length === 0 ? (
-                <p className="text-gray-500 italic">No comments yet. Add one above!</p>
-              ) : (
-                <div className="space-y-3">
-                  {comments.map(comment => (
-                    <div
-                      key={comment._id}
-                      className="border border-gray-200 rounded-lg p-4 hover:bg-gray-50 transition-colors"
-                      style={{ borderLeftWidth: '4px', borderLeftColor: comment.color }}
-                    >
-                      {editingCommentId === comment._id ? (
-                        <div>
-                          <input
-                            type="text"
-                            value={editText}
-                            onChange={(e) => setEditText(e.target.value)}
-                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-800 mb-2"
-                          />
-                          <div className="flex gap-2">
-                            <button
-                              onClick={() => saveEdit(comment._id)}
-                              className="px-3 py-1 text-white rounded text-sm"
-                              style={{ backgroundColor: '#00875F' }}
-                            >
-                              Save
-                            </button>
-                            <button
-                              onClick={cancelEdit}
-                              className="px-3 py-1 bg-gray-200 text-gray-700 rounded text-sm"
-                            >
-                              Cancel
-                            </button>
-                          </div>
-                        </div>
-                      ) : (
-                        <div className="flex items-start justify-between">
-                          <div className="flex-1">
-                            <button
-                              onClick={() => jumpToTime(comment.timestamp ?? comment.timeRange?.start ?? 0, false)}
-                              className="text-blue-500 hover:text-blue-700 font-mono text-sm font-semibold mb-2 hover:underline flex items-center gap-2"
-                            >
-                              {comment.timeRange && (
-                                <span className="px-2 py-0.5 bg-yellow-100 text-yellow-800 rounded text-xs">
-                                  RANGE
-                                </span>
-                              )}
-                              {comment.timeString}
-                            </button>
-                            <p className="text-gray-800 mb-1">{comment.text}</p>
-                            <p className="text-xs text-gray-500">
-                              By {comment.userId.name} • {new Date(comment.createdAt).toLocaleDateString()}
-                            </p>
-                          </div>
-                          {comment.userId._id === currentUserId && (
-                            <div className="flex gap-2 ml-4">
-                              <button
-                                onClick={() => startEdit(comment)}
-                                className="text-blue-600 hover:text-blue-700 text-sm"
-                              >
-                                Edit
-                              </button>
-                              <button
-                                onClick={() => deleteComment(comment._id)}
-                                className="text-red-600 hover:text-red-700 text-sm"
-                              >
-                                Delete
-                              </button>
-                            </div>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Sidebar */}
-          <div className="w-80">
-            <div className="bg-white rounded-lg shadow-lg p-6 sticky top-8">
-              <h2 className="text-xl font-semibold mb-4 text-gray-800">Timestamp Comments</h2>
-              <div className="min-h-[200px]">
-                {displayedComments.length > 0 ? (
-                  <div className="space-y-3">
-                    {displayedComments.map(comment => (
-                      <div
-                        key={comment.displayId}
-                        className={`border rounded-lg p-4 animate-fade-in ${
-                          comment.timeRange
-                            ? 'bg-yellow-50 border-yellow-300'
-                            : 'bg-blue-50 border-blue-200'
-                        }`}
-                      >
-                        <div className="flex items-center gap-2 mb-2">
-                          {comment.timeRange && (
-                            <span className="px-2 py-0.5 bg-yellow-200 text-yellow-800 rounded text-xs font-semibold">
-                              RANGE
-                            </span>
-                          )}
-                          <div className={`font-mono text-sm font-semibold ${
-                            comment.timeRange ? 'text-yellow-700' : 'text-blue-600'
-                          }`}>
-                            {comment.timeString}
-                          </div>
-                        </div>
-                        <p className="text-gray-800">{comment.text}</p>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="text-gray-400 italic">
-                    Comments will appear here when the video reaches their timestamp
-                  </p>
-                )}
-              </div>
             </div>
 
             {/* Invited Commenters - Only show for logged-in users */}
