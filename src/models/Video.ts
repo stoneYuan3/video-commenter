@@ -9,6 +9,8 @@ export interface IVideo extends Document {
   uploadedVideoUrl?: string; // For uploaded videos
   thumbnail?: string;
   duration: number;
+  permission: 'invited-only' | 'anyone-view' | 'anyone-edit';
+  invitedUsers: Types.ObjectId[];
   createdAt: Date;
   updatedAt: Date;
 }
@@ -45,6 +47,18 @@ const VideoSchema = new Schema<IVideo>(
     duration: {
       type: Number,
       default: 0,
+    },
+    permission: {
+      type: String,
+      enum: ['invited-only', 'anyone-view', 'anyone-edit'],
+      default: 'invited-only',
+    },
+    invitedUsers: {
+      type: [{
+        type: Schema.Types.ObjectId,
+        ref: 'User',
+      }],
+      default: [],
     },
   },
   {

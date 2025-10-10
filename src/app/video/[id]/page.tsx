@@ -59,6 +59,10 @@ export default function VideoPage() {
   const [currentUserId, setCurrentUserId] = useState<string>('');
   const [editingCommentId, setEditingCommentId] = useState<string | null>(null);
   const [editText, setEditText] = useState('');
+  const [showPermissionModal, setShowPermissionModal] = useState(false);
+  const [showInviteModal, setShowInviteModal] = useState(false);
+  const [inviteEmail, setInviteEmail] = useState('');
+  const [isOwner, setIsOwner] = useState(false);
 
   const playerRef = useRef<any>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -80,6 +84,20 @@ export default function VideoPage() {
       setLoading(true);
       setError('');
 
+      // Get current user ID first
+      let loggedInUserId = '';
+      try {
+        const userRes = await fetch('/api/auth/me');
+        if (userRes.ok) {
+          const userData = await userRes.json();
+          loggedInUserId = userData.userId;
+          setCurrentUserId(userData.userId);
+        }
+      } catch (e) {
+        // Not logged in, that's okay for public videos
+        console.log('User not logged in');
+      }
+
       // Fetch video
       const videoRes = await fetch(`/api/videos/${videoIdParam}`);
       if (videoRes.status === 401) {
@@ -93,9 +111,13 @@ export default function VideoPage() {
       console.log('Fetched video data:', videoData.video);
       setVideo(videoData.video);
 
-      // Get current user ID from the video owner (simple way)
-      // In production, you'd get this from a /api/auth/me endpoint
-      setCurrentUserId(videoData.video.userId);
+      // Check if current user is the owner
+      if (videoData.userPermissions) {
+        setIsOwner(videoData.userPermissions.isOwner);
+      } else if (loggedInUserId) {
+        // Fallback: check if userId matches
+        setIsOwner(videoData.video.userId === loggedInUserId);
+      }
 
       // Fetch comments
       const commentsRes = await fetch(`/api/comments?videoId=${videoIdParam}`);
@@ -414,6 +436,76 @@ export default function VideoPage() {
     }
   };
 
+  const updatePermission = async (permission: string) => {
+    if (!video) return;
+
+    try {
+      const res = await fetch(`/api/videos/${video._id}/permissions`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ permission }),
+      });
+
+      if (!res.ok) {
+        throw new Error('Failed to update permission');
+      }
+
+      const data = await res.json();
+      setVideo(data.video);
+      setShowPermissionModal(false);
+    } catch (err: any) {
+      console.error('Update permission error:', err);
+      alert('Failed to update permission: ' + err.message);
+    }
+  };
+
+  const inviteUser = async () => {
+    if (!video || !inviteEmail.trim()) return;
+
+    try {
+      const res = await fetch(`/api/videos/${video._id}/invite`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: inviteEmail }),
+      });
+
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || 'Failed to invite user');
+      }
+
+      const data = await res.json();
+      setVideo(data.video);
+      setInviteEmail('');
+      setShowInviteModal(false);
+      alert(`Successfully invited ${inviteEmail}`);
+    } catch (err: any) {
+      console.error('Invite user error:', err);
+      alert(err.message);
+    }
+  };
+
+  const removeInvitedUser = async (userId: string) => {
+    if (!video) return;
+    if (!confirm('Are you sure you want to remove this user?')) return;
+
+    try {
+      const res = await fetch(`/api/videos/${video._id}/invite?userId=${userId}`, {
+        method: 'DELETE',
+      });
+
+      if (!res.ok) {
+        throw new Error('Failed to remove user');
+      }
+
+      const data = await res.json();
+      setVideo(data.video);
+    } catch (err: any) {
+      console.error('Remove user error:', err);
+      alert('Failed to remove user: ' + err.message);
+    }
+  };
+
   const jumpToTime = (timestamp: number, shouldPause: boolean = false) => {
     if (!video) return;
 
@@ -563,7 +655,25 @@ export default function VideoPage() {
     <div className="min-h-screen bg-gray-50 p-8">
       <div className="max-w-7xl mx-auto">
         <div className="flex justify-between items-center mb-4">
-          <h1 className="text-3xl font-bold text-gray-800">{video.title}</h1>
+          <div className="flex flex-col gap-2">
+            <div className="flex items-center gap-4">
+              <h1 className="text-3xl font-bold text-gray-800">{video.title}</h1>
+              {isOwner && (
+                <>
+                  <button
+                    onClick={() => setShowPermissionModal(true)}
+                    className="text-xs px-2 py-0.5 rounded bg-gray-100 text-gray-600 hover:bg-gray-200 transition-colors cursor-pointer"
+                    title="Click to adjust permissions"
+                  >
+                    {video.permission === 'invited-only' && '🔒 Invited Only'}
+                    {video.permission === 'anyone-view' && '👁️ Anyone View'}
+                    {video.permission === 'anyone-edit' && '✏️ Anyone Edit'}
+                    {!video.permission && '🔒 Invited Only'}
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
           <button
             onClick={() => router.push('/dashboard')}
             className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors font-medium"
@@ -739,31 +849,56 @@ export default function VideoPage() {
             {/* Add comment interface */}
             <div className="bg-white rounded-lg shadow-lg p-6 mb-6">
               <h2 className="text-xl font-semibold mb-4 text-gray-800">Add Comment</h2>
-              <div className="flex gap-3">
-                <input
-                  type="text"
-                  value={newComment}
-                  onChange={(e) => setNewComment(e.target.value)}
-                  onKeyPress={(e) => e.key === 'Enter' && addComment()}
-                  placeholder="Add a comment at the current timestamp..."
-                  className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-800"
-                />
-                <button
-                  onClick={addComment}
-                  className="px-6 py-2 text-white rounded-lg transition-colors font-medium"
-                  style={{ backgroundColor: '#00875F' }}
-                  onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#006644')}
-                  onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = '#00875F')}
-                >
-                  Add
-                </button>
-              </div>
-              <div className="mt-2 text-sm text-gray-600">
-                {selectedRange
-                  ? `Comment will be added to range: ${formatTimeRange(selectedRange.start, selectedRange.end)}`
-                  : `Comment will be added at: ${formatTime(currentTime)}`
-                }
-              </div>
+              {currentUserId ? (
+                <>
+                  <div className="flex gap-3">
+                    <input
+                      type="text"
+                      value={newComment}
+                      onChange={(e) => setNewComment(e.target.value)}
+                      onKeyPress={(e) => e.key === 'Enter' && addComment()}
+                      placeholder="Add a comment at the current timestamp..."
+                      className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-800"
+                    />
+                    <button
+                      onClick={addComment}
+                      className="px-6 py-2 text-white rounded-lg transition-colors font-medium"
+                      style={{ backgroundColor: '#00875F' }}
+                      onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#006644')}
+                      onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = '#00875F')}
+                    >
+                      Add
+                    </button>
+                  </div>
+                  <div className="mt-2 text-sm text-gray-600">
+                    {selectedRange
+                      ? `Comment will be added to range: ${formatTimeRange(selectedRange.start, selectedRange.end)}`
+                      : `Comment will be added at: ${formatTime(currentTime)}`
+                    }
+                  </div>
+                </>
+              ) : (
+                <div className="text-center py-8">
+                  <p className="text-gray-600 mb-4">Please log in or sign up to add comments</p>
+                  <div className="flex gap-3 justify-center">
+                    <a
+                      href="/login"
+                      className="px-6 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors font-medium"
+                    >
+                      Log In
+                    </a>
+                    <a
+                      href="/signup"
+                      className="px-6 py-2 text-white rounded-lg transition-colors font-medium"
+                      style={{ backgroundColor: '#00875F' }}
+                      onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#006644')}
+                      onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = '#00875F')}
+                    >
+                      Sign Up
+                    </a>
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Comments list */}
@@ -886,8 +1021,155 @@ export default function VideoPage() {
                 )}
               </div>
             </div>
+
+            {/* Invited Commenters */}
+            <div className={`bg-white rounded-lg shadow-lg p-6 mt-6 ${
+              video.permission === 'anyone-edit' ? 'opacity-50 pointer-events-none' : ''
+            }`}>
+              <div className="flex justify-between items-center mb-4">
+                <h2 className="text-xl font-semibold text-gray-800">Invited Commenters</h2>
+                {(isOwner || video.invitedUsers?.some((u: any) => u._id === currentUserId)) &&
+                 video.permission !== 'anyone-edit' && (
+                  <button
+                    onClick={() => setShowInviteModal(true)}
+                    className="text-blue-500 hover:text-blue-700"
+                    title="Invite user"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                      <path d="M8 9a3 3 0 100-6 3 3 0 000 6zM8 11a6 6 0 016 6H2a6 6 0 016-6zM16 7a1 1 0 10-2 0v1h-1a1 1 0 100 2h1v1a1 1 0 102 0v-1h1a1 1 0 100-2h-1V7z" />
+                    </svg>
+                  </button>
+                )}
+              </div>
+              <div className="space-y-2">
+                {video.invitedUsers && video.invitedUsers.length > 0 ? (
+                  video.invitedUsers.map((user: any) => (
+                    <div key={user._id} className="flex items-center justify-between p-2 hover:bg-gray-50 rounded">
+                      <div>
+                        <p className="text-sm font-medium text-gray-800">{user.name || user.username}</p>
+                        <p className="text-xs text-gray-500">{user.email}</p>
+                      </div>
+                      {isOwner && (
+                        <button
+                          onClick={() => removeInvitedUser(user._id)}
+                          className="text-red-500 hover:text-red-700"
+                          title="Remove user"
+                        >
+                          <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+                            <path fillRule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clipRule="evenodd" />
+                          </svg>
+                        </button>
+                      )}
+                    </div>
+                  ))
+                ) : (
+                  <p className="text-sm text-gray-500 italic">No invited users yet</p>
+                )}
+              </div>
+              {video.permission === 'anyone-edit' && (
+                <p className="text-xs text-gray-500 mt-4 italic">
+                  Invite list is disabled when permission is set to "Anyone Can Edit"
+                </p>
+              )}
+            </div>
           </div>
         </div>
+
+        {/* Permission Modal */}
+        {showPermissionModal && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" onClick={() => setShowPermissionModal(false)}>
+            <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4" onClick={(e) => e.stopPropagation()}>
+              <h2 className="text-xl font-bold mb-4 text-gray-800">Adjust Permissions</h2>
+              <p className="text-sm text-gray-600 mb-4">Video: {video.title}</p>
+              <div className="space-y-3">
+                <button
+                  onClick={() => updatePermission('invited-only')}
+                  className={`w-full text-left p-3 rounded-lg border-2 transition-colors ${
+                    (video.permission || 'invited-only') === 'invited-only'
+                      ? 'border-blue-500 bg-blue-50'
+                      : 'border-gray-300 hover:border-gray-400'
+                  }`}
+                >
+                  <div className="font-semibold text-gray-800">🔒 Invited Only</div>
+                  <div className="text-sm text-gray-600">Only invited users can view and comment</div>
+                </button>
+                <button
+                  onClick={() => updatePermission('anyone-view')}
+                  className={`w-full text-left p-3 rounded-lg border-2 transition-colors ${
+                    (video.permission || 'invited-only') === 'anyone-view'
+                      ? 'border-blue-500 bg-blue-50'
+                      : 'border-gray-300 hover:border-gray-400'
+                  }`}
+                >
+                  <div className="font-semibold text-gray-800">👁️ Anyone Can View</div>
+                  <div className="text-sm text-gray-600">Anyone with link can view, invited users can comment</div>
+                </button>
+                <button
+                  onClick={() => updatePermission('anyone-edit')}
+                  className={`w-full text-left p-3 rounded-lg border-2 transition-colors ${
+                    (video.permission || 'invited-only') === 'anyone-edit'
+                      ? 'border-blue-500 bg-blue-50'
+                      : 'border-gray-300 hover:border-gray-400'
+                  }`}
+                >
+                  <div className="font-semibold text-gray-800">✏️ Anyone Can Edit</div>
+                  <div className="text-sm text-gray-600">Anyone with link can view and comment (requires account)</div>
+                </button>
+              </div>
+              <button
+                onClick={() => {
+                  const videoUrl = window.location.href;
+                  navigator.clipboard.writeText(videoUrl);
+                  alert('Video link copied to clipboard!');
+                }}
+                className="mt-4 w-full px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors"
+              >
+                📋 Copy Video Link
+              </button>
+              <button
+                onClick={() => setShowPermissionModal(false)}
+                className="mt-2 w-full px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Invite User Modal */}
+        {showInviteModal && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" onClick={() => setShowInviteModal(false)}>
+            <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4" onClick={(e) => e.stopPropagation()}>
+              <h2 className="text-xl font-bold mb-4 text-gray-800">Invite User</h2>
+              <p className="text-sm text-gray-600 mb-4">Video: {video.title}</p>
+              <input
+                type="email"
+                value={inviteEmail}
+                onChange={(e) => setInviteEmail(e.target.value)}
+                onKeyPress={(e) => e.key === 'Enter' && inviteUser()}
+                placeholder="Enter email address"
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-800 mb-4"
+              />
+              <div className="flex gap-2">
+                <button
+                  onClick={inviteUser}
+                  className="flex-1 px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors"
+                >
+                  Invite
+                </button>
+                <button
+                  onClick={() => {
+                    setShowInviteModal(false);
+                    setInviteEmail('');
+                  }}
+                  className="flex-1 px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

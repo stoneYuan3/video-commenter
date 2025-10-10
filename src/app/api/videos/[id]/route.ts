@@ -12,25 +12,46 @@ export async function GET(
   try {
     const user = getUserFromRequest(req);
 
-    if (!user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
     await connectDB();
 
     const { id } = await params;
-    const video = await Video.findById(id);
+    const video = await Video.findById(id).populate('invitedUsers', 'username name email');
 
     if (!video) {
       return NextResponse.json({ error: 'Video not found' }, { status: 404 });
     }
 
-    // Check if user owns this video
-    if (video.userId.toString() !== user.userId) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
+    // Check permissions
+    const isOwner = user && video.userId.toString() === user.userId;
+    const isInvited = user && video.invitedUsers.some((invitedUser: any) => invitedUser._id.toString() === user.userId);
+
+    // Permission checks based on video.permission
+    if (video.permission === 'invited-only') {
+      // Invited only: must be logged in and either owner or invited
+      if (!user) {
+        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+      }
+      if (!isOwner && !isInvited) {
+        return NextResponse.json({ error: 'Access denied. You are not invited to view this video.' }, { status: 403 });
+      }
+    } else if (video.permission === 'anyone-view') {
+      // Anyone can view: no auth required to view, but return user status for comment permissions
+      // User can comment only if invited or owner
+    } else if (video.permission === 'anyone-edit') {
+      // Anyone can edit: no auth required to view, must have account to comment
+      // Return user status for comment permissions
     }
 
-    return NextResponse.json({ video }, { status: 200 });
+    // Return video with user permissions info
+    return NextResponse.json({
+      video,
+      userPermissions: {
+        canView: true, // If we got here, user can view
+        canComment: isOwner || isInvited || video.permission === 'anyone-edit',
+        isOwner: isOwner || false,
+        isInvited: isInvited || false,
+      }
+    }, { status: 200 });
   } catch (error: any) {
     console.error('Get video error:', error);
     return NextResponse.json(

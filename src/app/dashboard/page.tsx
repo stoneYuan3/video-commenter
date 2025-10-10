@@ -12,6 +12,8 @@ interface Video {
   gdriveId?: string;
   thumbnail?: string;
   duration: number;
+  permission?: 'invited-only' | 'anyone-view' | 'anyone-edit';
+  invitedUsers?: any[];
   createdAt: string;
 }
 
@@ -19,6 +21,10 @@ export default function DashboardPage() {
   const [videos, setVideos] = useState<Video[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [showPermissionModal, setShowPermissionModal] = useState(false);
+  const [showInviteModal, setShowInviteModal] = useState(false);
+  const [selectedVideo, setSelectedVideo] = useState<Video | null>(null);
+  const [inviteEmail, setInviteEmail] = useState('');
   const router = useRouter();
 
   useEffect(() => {
@@ -79,6 +85,67 @@ export default function DashboardPage() {
       console.error('Delete video error:', err);
       alert('Failed to delete video: ' + err.message);
     }
+  };
+
+  const updatePermission = async (videoId: string, permission: string) => {
+    try {
+      const res = await fetch(`/api/videos/${videoId}/permissions`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ permission }),
+      });
+
+      if (!res.ok) {
+        throw new Error('Failed to update permission');
+      }
+
+      const data = await res.json();
+      setVideos(prev => prev.map(v => v._id === videoId ? data.video : v));
+      setShowPermissionModal(false);
+    } catch (err: any) {
+      console.error('Update permission error:', err);
+      alert('Failed to update permission: ' + err.message);
+    }
+  };
+
+  const inviteUser = async () => {
+    if (!selectedVideo || !inviteEmail.trim()) return;
+
+    try {
+      const res = await fetch(`/api/videos/${selectedVideo._id}/invite`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: inviteEmail }),
+      });
+
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || 'Failed to invite user');
+      }
+
+      const data = await res.json();
+      setVideos(prev => prev.map(v => v._id === selectedVideo._id ? data.video : v));
+      setInviteEmail('');
+      setShowInviteModal(false);
+      alert(`Successfully invited ${inviteEmail}`);
+    } catch (err: any) {
+      console.error('Invite user error:', err);
+      alert(err.message);
+    }
+  };
+
+  const openPermissionModal = (video: Video, e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setSelectedVideo(video);
+    setShowPermissionModal(true);
+  };
+
+  const openInviteModal = (video: Video, e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setSelectedVideo(video);
+    setShowInviteModal(true);
   };
 
   const getThumbnail = (video: Video) => {
@@ -176,19 +243,63 @@ export default function DashboardPage() {
                   <div className="p-4 flex flex-row items-center w-full justify-between">
                     <div className='flex flex-col'>
                       <h3 className="font-semibold text-gray-800 mb-1 truncate">{video.title}</h3>
-                      <p className="text-sm text-gray-500">
-                        {new Date(video.createdAt).toLocaleDateString()}
-                      </p>
+                      <div className="flex items-center gap-2">
+                        <p className="text-sm text-gray-500">
+                          {new Date(video.createdAt).toLocaleDateString()}
+                        </p>
+                        <button
+                          onClick={(e) => openPermissionModal(video, e)}
+                          className="text-xs px-2 py-0.5 rounded bg-gray-100 text-gray-600 hover:bg-gray-200 transition-colors cursor-pointer"
+                          title="Click to adjust permissions"
+                        >
+                          {video.permission === 'invited-only' && '🔒 Invited Only'}
+                          {video.permission === 'anyone-view' && '👁️ Anyone View'}
+                          {video.permission === 'anyone-edit' && '✏️ Anyone Edit'}
+                          {!video.permission && '🔒 Invited Only'}
+                        </button>
+                      </div>
                     </div>
-                    <button
-                      onClick={(e) => deleteVideo(video._id, e)}
-                      className="h-fit transition-opacity hover:opacity-50"
-                      title="Delete video"
-                    >
-                      <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-                        <path fillRule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clipRule="evenodd" />
-                      </svg>
-                    </button>
+                    <div className="flex gap-2">
+                      {/* Copy Link Icon */}
+                      <button
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          const videoUrl = `${window.location.origin}/video/${video._id}`;
+                          navigator.clipboard.writeText(videoUrl);
+                          alert('Video link copied to clipboard!');
+                        }}
+                        className="h-fit transition-opacity hover:opacity-50"
+                        title="Copy video link"
+                      >
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                          <path d="M8 3a1 1 0 011-1h2a1 1 0 110 2H9a1 1 0 01-1-1z" />
+                          <path d="M6 3a2 2 0 00-2 2v11a2 2 0 002 2h8a2 2 0 002-2V5a2 2 0 00-2-2 3 3 0 01-3 3H9a3 3 0 01-3-3z" />
+                        </svg>
+                      </button>
+
+                      {/* Invite User Icon */}
+                      <button
+                        onClick={(e) => openInviteModal(video, e)}
+                        className="h-fit transition-opacity hover:opacity-50"
+                        title="Invite user"
+                      >
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                          <path d="M8 9a3 3 0 100-6 3 3 0 000 6zM8 11a6 6 0 016 6H2a6 6 0 016-6zM16 7a1 1 0 10-2 0v1h-1a1 1 0 100 2h1v1a1 1 0 102 0v-1h1a1 1 0 100-2h-1V7z" />
+                        </svg>
+                      </button>
+
+                      {/* Delete Icon */}
+                      <button
+                        onClick={(e) => deleteVideo(video._id, e)}
+                        className="h-fit transition-opacity hover:opacity-50"
+                        title="Delete video"
+                      >
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                          <path fillRule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clipRule="evenodd" />
+                        </svg>
+                      </button>
+                    </div>
                   </div>
                 </Link>
 
@@ -197,6 +308,92 @@ export default function DashboardPage() {
           </div>
         )}
       </div>
+
+      {/* Permission Modal */}
+      {showPermissionModal && selectedVideo && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" onClick={() => setShowPermissionModal(false)}>
+          <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4" onClick={(e) => e.stopPropagation()}>
+            <h2 className="text-xl font-bold mb-4 text-gray-800">Adjust Permissions</h2>
+            <p className="text-sm text-gray-600 mb-4">Video: {selectedVideo.title}</p>
+            <div className="space-y-3">
+              <button
+                onClick={() => updatePermission(selectedVideo._id, 'invited-only')}
+                className={`w-full text-left p-3 rounded-lg border-2 transition-colors ${
+                  (selectedVideo.permission || 'invited-only') === 'invited-only'
+                    ? 'border-blue-500 bg-blue-50'
+                    : 'border-gray-300 hover:border-gray-400'
+                }`}
+              >
+                <div className="font-semibold text-gray-800">Invited Only</div>
+                <div className="text-sm text-gray-600">Only invited users can view and comment</div>
+              </button>
+              <button
+                onClick={() => updatePermission(selectedVideo._id, 'anyone-view')}
+                className={`w-full text-left p-3 rounded-lg border-2 transition-colors ${
+                  (selectedVideo.permission || 'invited-only') === 'anyone-view'
+                    ? 'border-blue-500 bg-blue-50'
+                    : 'border-gray-300 hover:border-gray-400'
+                }`}
+              >
+                <div className="font-semibold text-gray-800">Anyone Can View</div>
+                <div className="text-sm text-gray-600">Anyone with link can view, invited users can comment</div>
+              </button>
+              <button
+                onClick={() => updatePermission(selectedVideo._id, 'anyone-edit')}
+                className={`w-full text-left p-3 rounded-lg border-2 transition-colors ${
+                  (selectedVideo.permission || 'invited-only') === 'anyone-edit'
+                    ? 'border-blue-500 bg-blue-50'
+                    : 'border-gray-300 hover:border-gray-400'
+                }`}
+              >
+                <div className="font-semibold text-gray-800">Anyone Can Edit</div>
+                <div className="text-sm text-gray-600">Anyone with link can view and comment (requires account)</div>
+              </button>
+            </div>
+            <button
+              onClick={() => setShowPermissionModal(false)}
+              className="mt-4 w-full px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors"
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Invite User Modal */}
+      {showInviteModal && selectedVideo && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" onClick={() => setShowInviteModal(false)}>
+          <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4" onClick={(e) => e.stopPropagation()}>
+            <h2 className="text-xl font-bold mb-4 text-gray-800">Invite User</h2>
+            <p className="text-sm text-gray-600 mb-4">Video: {selectedVideo.title}</p>
+            <input
+              type="email"
+              value={inviteEmail}
+              onChange={(e) => setInviteEmail(e.target.value)}
+              onKeyPress={(e) => e.key === 'Enter' && inviteUser()}
+              placeholder="Enter email address"
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-800 mb-4"
+            />
+            <div className="flex gap-2">
+              <button
+                onClick={inviteUser}
+                className="flex-1 px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors"
+              >
+                Invite
+              </button>
+              <button
+                onClick={() => {
+                  setShowInviteModal(false);
+                  setInviteEmail('');
+                }}
+                className="flex-1 px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
