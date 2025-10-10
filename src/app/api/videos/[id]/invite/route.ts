@@ -3,6 +3,7 @@ import connectDB from '@/lib/mongodb';
 import Video from '@/models/Video';
 import User from '@/models/User';
 import { getUserFromRequest } from '@/lib/auth';
+import { sendInvitationEmail } from '@/lib/email';
 
 // Add invited user
 export async function POST(
@@ -57,6 +58,27 @@ export async function POST(
 
     video.invitedUsers.push(userToInvite._id);
     await video.save();
+
+    // Get the inviter's name
+    const inviter = await User.findById(user.userId);
+    const inviterName = inviter?.name || inviter?.username || 'Someone';
+
+    // Send invitation email
+    const videoLink = `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/video/${video._id}`;
+
+    try {
+      await sendInvitationEmail({
+        toEmail: userToInvite.email,
+        toName: userToInvite.name || userToInvite.username,
+        videoTitle: video.title,
+        videoLink,
+        inviterName,
+      });
+      console.log(`Invitation email sent to ${userToInvite.email}`);
+    } catch (emailError) {
+      console.error('Failed to send invitation email:', emailError);
+      // Don't fail the invitation if email fails, just log it
+    }
 
     // Populate invited users for response
     await video.populate('invitedUsers', 'username name');

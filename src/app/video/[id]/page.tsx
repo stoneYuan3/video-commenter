@@ -28,6 +28,13 @@ interface Video {
   gdriveId?: string;
   uploadedVideoUrl?: string;
   duration: number;
+  userId?: {
+    _id: string;
+    name: string;
+    email: string;
+  };
+  permission?: 'invited-only' | 'anyone-view' | 'anyone-edit';
+  invitedUsers?: any[];
 }
 
 declare global {
@@ -63,6 +70,9 @@ export default function VideoPage() {
   const [showInviteModal, setShowInviteModal] = useState(false);
   const [inviteEmail, setInviteEmail] = useState('');
   const [isOwner, setIsOwner] = useState(false);
+  const [accessDenied, setAccessDenied] = useState(false);
+  const [ownerEmail, setOwnerEmail] = useState('');
+  const [videoTitle, setVideoTitle] = useState('');
 
   const playerRef = useRef<any>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -100,7 +110,16 @@ export default function VideoPage() {
 
       // Fetch video
       const videoRes = await fetch(`/api/videos/${videoIdParam}`);
-      if (videoRes.status === 401) {
+      if (videoRes.status === 401 || videoRes.status === 403) {
+        const errorData = await videoRes.json();
+        if (errorData.accessDenied) {
+          // Show access denied UI
+          setAccessDenied(true);
+          setOwnerEmail(errorData.ownerEmail || '');
+          setVideoTitle(errorData.videoTitle || 'this video');
+          setLoading(false);
+          return;
+        }
         router.push('/login');
         return;
       }
@@ -634,6 +653,47 @@ export default function VideoPage() {
     );
   }
 
+  if (accessDenied) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center max-w-md mx-auto bg-white p-8 rounded-lg shadow-lg">
+          <div className="text-6xl mb-4">🔒</div>
+          <h1 className="text-2xl font-bold text-gray-800 mb-4">Access Denied</h1>
+          <p className="text-gray-600 mb-6">
+            You do not have permission to view <strong>{videoTitle}</strong>.
+          </p>
+          {ownerEmail && (
+            <div className="mb-6">
+              <p className="text-gray-700 mb-3">
+                If you believe you should have access, please contact the video owner:
+              </p>
+              <a
+                href={`mailto:${ownerEmail}?subject=Request access to "${videoTitle}"`}
+                className="inline-block px-6 py-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors font-medium"
+              >
+                📧 Contact Owner
+              </a>
+            </div>
+          )}
+          <div className="flex gap-3 justify-center">
+            <button
+              onClick={() => router.push('/dashboard')}
+              className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors"
+            >
+              Back to Dashboard
+            </button>
+            <button
+              onClick={() => router.push('/login')}
+              className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
+            >
+              Log In
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   if (error || !video) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -878,25 +938,10 @@ export default function VideoPage() {
                   </div>
                 </>
               ) : (
-                <div className="text-center py-8">
-                  <p className="text-gray-600 mb-4">Please log in or sign up to add comments</p>
-                  <div className="flex gap-3 justify-center">
-                    <a
-                      href="/login"
-                      className="px-6 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors font-medium"
-                    >
-                      Log In
-                    </a>
-                    <a
-                      href="/signup"
-                      className="px-6 py-2 text-white rounded-lg transition-colors font-medium"
-                      style={{ backgroundColor: '#00875F' }}
-                      onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#006644')}
-                      onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = '#00875F')}
-                    >
-                      Sign Up
-                    </a>
-                  </div>
+                <div className="text-center py-4">
+                  <p className="text-gray-600">
+                    <a href="/login" className="text-blue-500 hover:underline">Log in</a> or <a href="/signup" className="text-blue-500 hover:underline">Sign up</a> to add comments
+                  </p>
                 </div>
               )}
             </div>
@@ -1022,7 +1067,8 @@ export default function VideoPage() {
               </div>
             </div>
 
-            {/* Invited Commenters */}
+            {/* Invited Commenters - Only show for logged-in users */}
+            {currentUserId && (
             <div className={`bg-white rounded-lg shadow-lg p-6 mt-6 ${
               video.permission === 'anyone-edit' ? 'opacity-50 pointer-events-none' : ''
             }`}>
@@ -1072,6 +1118,7 @@ export default function VideoPage() {
                 </p>
               )}
             </div>
+            )}
           </div>
         </div>
 
@@ -1150,7 +1197,7 @@ export default function VideoPage() {
                 placeholder="Enter email address"
                 className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-800 mb-4"
               />
-              <div className="flex gap-2">
+              <div className="flex gap-2 mb-3">
                 <button
                   onClick={inviteUser}
                   className="flex-1 px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors"
@@ -1167,6 +1214,16 @@ export default function VideoPage() {
                   Cancel
                 </button>
               </div>
+              <button
+                onClick={() => {
+                  const videoUrl = window.location.href;
+                  navigator.clipboard.writeText(videoUrl);
+                  alert('Video link copied to clipboard!');
+                }}
+                className="w-full px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors"
+              >
+                📋 Copy Video Link
+              </button>
             </div>
           </div>
         )}

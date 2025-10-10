@@ -15,24 +15,38 @@ export async function GET(
     await connectDB();
 
     const { id } = await params;
-    const video = await Video.findById(id).populate('invitedUsers', 'username name email');
+    const video = await Video.findById(id)
+      .populate('invitedUsers', 'username name email')
+      .populate('userId', 'username name email');
 
     if (!video) {
       return NextResponse.json({ error: 'Video not found' }, { status: 404 });
     }
 
     // Check permissions
-    const isOwner = user && video.userId.toString() === user.userId;
+    // video.userId is populated, so we need to access _id
+    const videoOwnerId = (video.userId as any)?._id?.toString() || video.userId.toString();
+    const isOwner = user && videoOwnerId === user.userId;
     const isInvited = user && video.invitedUsers.some((invitedUser: any) => invitedUser._id.toString() === user.userId);
 
     // Permission checks based on video.permission
     if (video.permission === 'invited-only') {
       // Invited only: must be logged in and either owner or invited
       if (!user) {
-        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+        return NextResponse.json({
+          error: 'Unauthorized',
+          accessDenied: true,
+          videoTitle: video.title,
+          ownerEmail: (video.userId as any)?.email
+        }, { status: 401 });
       }
       if (!isOwner && !isInvited) {
-        return NextResponse.json({ error: 'Access denied. You are not invited to view this video.' }, { status: 403 });
+        return NextResponse.json({
+          error: 'Access denied. You are not invited to view this video.',
+          accessDenied: true,
+          videoTitle: video.title,
+          ownerEmail: (video.userId as any)?.email
+        }, { status: 403 });
       }
     } else if (video.permission === 'anyone-view') {
       // Anyone can view: no auth required to view, but return user status for comment permissions
