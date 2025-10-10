@@ -926,11 +926,10 @@ export default function VideoPage() {
                             else commentRefs.current.delete(comment._id);
                           }}
                           className={`border-l-[5px] p-3 transition-all duration-200 cursor-pointer ${
-                            isActive ? 'shadow-md' : ''
-                          } hover:shadow-lg`}
+                            isActive ? 'shadow-md bg-[#fef3c7]' : 'bg-[#ffffff]'
+                          } hover:shadow-lg hover:bg-[#fef3c7]`}
                           style={{
                             borderLeftColor: comment.color,
-                            backgroundColor: isActive ? '#fef3c7' : '#ffffff'
                           }}
                           onClick={(e) => {
                             // Don't trigger if clicking on buttons
