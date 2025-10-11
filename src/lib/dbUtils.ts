@@ -58,6 +58,7 @@ export async function executeDbOperation<T>(
     return await withRetry(operation);
   } catch (error: any) {
     console.error(`${errorMessage}:`, error);
-    throw new Error(errorMessage);
+    // Re-throw the original error to preserve error messages
+    throw error;
   }
 }
