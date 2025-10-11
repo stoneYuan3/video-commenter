@@ -3,6 +3,7 @@ import connectDB from '@/lib/mongodb';
 import Video from '@/models/Video';
 import Comment from '@/models/Comment';
 import { getUserFromRequest } from '@/lib/auth';
+import { executeDbOperation } from '@/lib/dbUtils';
 
 // GET a specific video
 export async function GET(
@@ -11,13 +12,16 @@ export async function GET(
 ) {
   try {
     const user = getUserFromRequest(req);
-
-    await connectDB();
-
     const { id } = await params;
-    const video = await Video.findById(id)
-      .populate('invitedUsers', 'username name email')
-      .populate('userId', 'username name email');
+
+    const video = await executeDbOperation(
+      async () => {
+        return await Video.findById(id)
+          .populate('invitedUsers', 'username name email')
+          .populate('userId', 'username name email');
+      },
+      'Failed to fetch video'
+    );
 
     if (!video) {
       return NextResponse.json({ error: 'Video not found' }, { status: 404 });
@@ -59,12 +63,17 @@ export async function GET(
     // Track last opened time for this user
     if (user) {
       try {
-        // Initialize Map if it doesn't exist
-        if (!video.lastOpenedBy) {
-          video.lastOpenedBy = new Map();
-        }
-        video.lastOpenedBy.set(user.userId, new Date());
-        await video.save();
+        await executeDbOperation(
+          async () => {
+            // Initialize Map if it doesn't exist
+            if (!video.lastOpenedBy) {
+              video.lastOpenedBy = new Map();
+            }
+            video.lastOpenedBy.set(user.userId, new Date());
+            await video.save();
+          },
+          'Failed to update last opened time'
+        );
       } catch (saveError) {
         console.error('Error saving last opened time:', saveError);
         // Don't fail the request if we can't save the timestamp
@@ -102,25 +111,29 @@ export async function DELETE(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    await connectDB();
-
     const { id } = await params;
-    const video = await Video.findById(id);
 
-    if (!video) {
-      return NextResponse.json({ error: 'Video not found' }, { status: 404 });
-    }
+    await executeDbOperation(
+      async () => {
+        const video = await Video.findById(id);
 
-    // Check if user owns this video
-    if (video.userId.toString() !== user.userId) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
-    }
+        if (!video) {
+          throw new Error('Video not found');
+        }
 
-    // Delete all comments associated with this video
-    await Comment.deleteMany({ videoId: id });
+        // Check if user owns this video
+        if (video.userId.toString() !== user.userId) {
+          throw new Error('Unauthorized');
+        }
 
-    // Delete the video
-    await Video.findByIdAndDelete(id);
+        // Delete all comments associated with this video
+        await Comment.deleteMany({ videoId: id });
+
+        // Delete the video
+        await Video.findByIdAndDelete(id);
+      },
+      'Failed to delete video'
+    );
 
     return NextResponse.json(
       { message: 'Video and associated comments deleted successfully' },

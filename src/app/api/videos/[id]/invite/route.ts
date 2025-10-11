@@ -4,6 +4,7 @@ import Video from '@/models/Video';
 import User from '@/models/User';
 import { getUserFromRequest } from '@/lib/auth';
 import { sendInvitationEmail } from '@/lib/email';
+import { executeDbOperation } from '@/lib/dbUtils';
 
 // Add invited user
 export async function POST(
@@ -17,8 +18,6 @@ export async function POST(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    await connectDB();
-
     const { id } = await params;
     const { email } = await req.json();
 
@@ -26,42 +25,51 @@ export async function POST(
       return NextResponse.json({ error: 'Email is required' }, { status: 400 });
     }
 
-    const video = await Video.findById(id);
+    const result = await executeDbOperation(
+      async () => {
+        const video = await Video.findById(id);
 
-    if (!video) {
-      return NextResponse.json({ error: 'Video not found' }, { status: 404 });
-    }
+        if (!video) {
+          throw new Error('Video not found');
+        }
 
-    // Check if user is owner or invited user
-    const isOwner = video.userId.toString() === user.userId;
-    const isInvited = video.invitedUsers.some((id: any) => id.toString() === user.userId);
+        // Check if user is owner or invited user
+        const isOwner = video.userId.toString() === user.userId;
+        const isInvited = video.invitedUsers.some((id: any) => id.toString() === user.userId);
 
-    if (!isOwner && !isInvited) {
-      return NextResponse.json({ error: 'You do not have permission to invite users' }, { status: 403 });
-    }
+        if (!isOwner && !isInvited) {
+          throw new Error('You do not have permission to invite users');
+        }
 
-    // Find user to invite
-    const userToInvite = await User.findOne({ email });
+        // Find user to invite
+        const userToInvite = await User.findOne({ email });
 
-    if (!userToInvite) {
-      return NextResponse.json({ error: 'User not found' }, { status: 404 });
-    }
+        if (!userToInvite) {
+          throw new Error('User not found');
+        }
 
-    // Check if already invited or is owner
-    if (video.userId.toString() === userToInvite._id.toString()) {
-      return NextResponse.json({ error: 'User is the video owner' }, { status: 400 });
-    }
+        // Check if already invited or is owner
+        if (video.userId.toString() === userToInvite._id.toString()) {
+          throw new Error('User is the video owner');
+        }
 
-    if (video.invitedUsers.some((id: any) => id.toString() === userToInvite._id.toString())) {
-      return NextResponse.json({ error: 'User is already invited' }, { status: 400 });
-    }
+        if (video.invitedUsers.some((id: any) => id.toString() === userToInvite._id.toString())) {
+          throw new Error('User is already invited');
+        }
 
-    video.invitedUsers.push(userToInvite._id);
-    await video.save();
+        video.invitedUsers.push(userToInvite._id);
+        await video.save();
 
-    // Get the inviter's name
-    const inviter = await User.findById(user.userId);
-    const inviterName = inviter?.name || inviter?.username || 'Someone';
+        // Get the inviter's name
+        const inviter = await User.findById(user.userId);
+        const inviterName = inviter?.name || inviter?.username || 'Someone';
+
+        return { video, userToInvite, inviterName };
+      },
+      'Failed to invite user'
+    );
+
+    const { video, userToInvite, inviterName } = result;
 
     // Send invitation email
     const videoLink = `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/video/${video._id}`;
@@ -81,7 +89,12 @@ export async function POST(
     }
 
     // Populate invited users for response
-    await video.populate('invitedUsers', 'username name');
+    await executeDbOperation(
+      async () => {
+        await video.populate('invitedUsers', 'username name');
+      },
+      'Failed to populate invited users'
+    );
 
     return NextResponse.json({ video }, { status: 200 });
   } catch (error: any) {
@@ -105,8 +118,6 @@ export async function DELETE(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    await connectDB();
-
     const { id } = await params;
     const { searchParams } = new URL(req.url);
     const userIdToRemove = searchParams.get('userId');
@@ -115,22 +126,29 @@ export async function DELETE(
       return NextResponse.json({ error: 'User ID is required' }, { status: 400 });
     }
 
-    const video = await Video.findById(id);
+    const video = await executeDbOperation(
+      async () => {
+        const video = await Video.findById(id);
 
-    if (!video) {
-      return NextResponse.json({ error: 'Video not found' }, { status: 404 });
-    }
+        if (!video) {
+          throw new Error('Video not found');
+        }
 
-    // Only owner can remove users
-    if (video.userId.toString() !== user.userId) {
-      return NextResponse.json({ error: 'Only the video owner can remove users' }, { status: 403 });
-    }
+        // Only owner can remove users
+        if (video.userId.toString() !== user.userId) {
+          throw new Error('Only the video owner can remove users');
+        }
 
-    video.invitedUsers = video.invitedUsers.filter((id: any) => id.toString() !== userIdToRemove);
-    await video.save();
+        video.invitedUsers = video.invitedUsers.filter((id: any) => id.toString() !== userIdToRemove);
+        await video.save();
 
-    // Populate invited users for response
-    await video.populate('invitedUsers', 'username name');
+        // Populate invited users for response
+        await video.populate('invitedUsers', 'username name');
+
+        return video;
+      },
+      'Failed to remove user'
+    );
 
     return NextResponse.json({ video }, { status: 200 });
   } catch (error: any) {
