@@ -1,11 +1,16 @@
 /**
- * Migration Script: Convert invitedUsers from ObjectId references to email addresses
+ * Migration Script: Convert invitedUsers to new structure with accepted status
  *
  * This script will:
- * 1. Find all videos that have invitedUsers with ObjectIds
- * 2. Look up the email for each ObjectId
- * 3. Replace the ObjectId array with email array
+ * 1. Find all videos that have invitedUsers
+ * 2. Convert from old formats (ObjectId or string) to new object structure
+ * 3. New structure: { email, accepted, userId, invitedAt }
  * 4. Save the updated video
+ *
+ * Handles three formats:
+ * - ObjectId[] -> Look up email, convert to object
+ * - string[] (email) -> Convert to object
+ * - object[] (already new format) -> Skip
  *
  * Run this script once after deploying the code changes.
  */
@@ -89,10 +94,10 @@ async function migrateInvitedUsers() {
           continue;
         }
 
-        // Check if already migrated (first element is a string, not ObjectId)
+        // Check if already migrated to new object format
         const firstInvitedUser = video.invitedUsers[0];
-        if (typeof firstInvitedUser === 'string' && firstInvitedUser.includes('@')) {
-          console.log(`⏭️  Skipping "${video.title}" - already migrated`);
+        if (typeof firstInvitedUser === 'object' && firstInvitedUser.email && firstInvitedUser.hasOwnProperty('accepted')) {
+          console.log(`⏭️  Skipping "${video.title}" - already migrated to new format`);
           skippedCount++;
           continue;
         }
@@ -100,34 +105,65 @@ async function migrateInvitedUsers() {
         console.log(`\n🔄 Migrating "${video.title}"...`);
         console.log(`   Current invitedUsers (${video.invitedUsers.length} users):`, video.invitedUsers);
 
-        // Convert ObjectIds to emails
-        const emailArray = [];
-        for (const userId of video.invitedUsers) {
+        // Convert to new object structure
+        const newInvitedUsers = [];
+
+        for (const item of video.invitedUsers) {
           try {
-            // Check if it's a valid ObjectId
-            if (!mongoose.Types.ObjectId.isValid(userId)) {
-              console.log(`   ⚠️  Invalid ObjectId: ${userId}, skipping`);
+            let email = null;
+            let userId = null;
+
+            // Determine format: ObjectId, string (email), or already object
+            if (mongoose.Types.ObjectId.isValid(item) && typeof item !== 'string') {
+              // Format 1: ObjectId - need to look up email
+              console.log(`   📋 Processing ObjectId: ${item}`);
+              const user = await User.findById(item);
+              if (user && user.email) {
+                email = user.email;
+                userId = item;
+                console.log(`   ✓ Converted ObjectId ${item} → ${email}`);
+              } else {
+                console.log(`   ⚠️  User not found for ObjectId: ${item}, skipping`);
+                continue;
+              }
+            } else if (typeof item === 'string' && item.includes('@')) {
+              // Format 2: String (email)
+              console.log(`   📧 Processing email string: ${item}`);
+              email = item;
+              // Try to find userId for this email
+              const user = await User.findOne({ email: item });
+              if (user) {
+                userId = user._id;
+                console.log(`   ✓ Found user ID for ${email}`);
+              } else {
+                console.log(`   ℹ️  No user found for ${email} (will create account later)`);
+              }
+            } else {
+              console.log(`   ⚠️  Unknown format: ${item}, skipping`);
               continue;
             }
 
-            const user = await User.findById(userId);
-            if (user && user.email) {
-              emailArray.push(user.email);
-              console.log(`   ✓ Converted ${userId} → ${user.email}`);
-            } else {
-              console.log(`   ⚠️  User not found for ObjectId: ${userId}, skipping`);
+            // Create new object structure
+            if (email) {
+              newInvitedUsers.push({
+                email: email,
+                accepted: true, // Assume old invitations were already accepted
+                userId: userId || undefined,
+                invitedAt: new Date(),
+              });
+              console.log(`   ✓ Added ${email} (accepted: true)`);
             }
-          } catch (userError) {
-            console.log(`   ⚠️  Error looking up user ${userId}:`, userError.message);
+          } catch (itemError) {
+            console.log(`   ⚠️  Error processing item ${item}:`, itemError.message);
           }
         }
 
-        // Update the video with email array
-        video.invitedUsers = emailArray;
+        // Update the video with new structure
+        video.invitedUsers = newInvitedUsers;
         await video.save();
 
-        console.log(`   ✅ Migrated "${video.title}" - ${emailArray.length} emails saved`);
-        console.log(`   New invitedUsers:`, emailArray);
+        console.log(`   ✅ Migrated "${video.title}" - ${newInvitedUsers.length} users converted`);
+        console.log(`   New invitedUsers structure:`, JSON.stringify(newInvitedUsers, null, 2));
         migratedCount++;
 
       } catch (videoError) {

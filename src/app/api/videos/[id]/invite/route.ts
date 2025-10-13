@@ -35,54 +35,62 @@ export async function POST(
 
         // Check if user is owner or invited user
         const isOwner = video.userId.toString() === user.userId;
-        const isInvited = video.invitedUsers.includes(user.email);
+        const isInvited = video.invitedUsers.some((invited: any) =>
+          invited.email === user.email && invited.accepted
+        );
 
         if (!isOwner && !isInvited) {
           throw new Error('You do not have permission to invite users');
         }
 
-        // Find user to invite
+        // Check if the email to invite exists in our system
         const userToInvite = await User.findOne({ email });
-
-        if (!userToInvite) {
-          throw new Error('User not found');
-        }
+        const hasAccount = !!userToInvite;
 
         // Check if already invited or is owner
-        if (video.userId.toString() === userToInvite._id.toString()) {
+        if (hasAccount && video.userId.toString() === userToInvite._id.toString()) {
           throw new Error('User is the video owner');
         }
 
-        if (video.invitedUsers.includes(email)) {
+        if (video.invitedUsers.some((invited: any) => invited.email === email)) {
           throw new Error('User is already invited');
         }
 
-        video.invitedUsers.push(email);
+        // Add user to invitedUsers with accepted: false
+        video.invitedUsers.push({
+          email,
+          accepted: false,
+          userId: undefined, // Will be set when they accept
+          invitedAt: new Date(),
+        } as any);
         await video.save();
 
         // Get the inviter's name
         const inviter = await User.findById(user.userId);
         const inviterName = inviter?.name || inviter?.username || 'Someone';
 
-        return { video, userToInvite, inviterName };
+        return { video, userToInvite, inviterName, hasAccount };
       },
       'Failed to invite user'
     );
 
-    const { video, userToInvite, inviterName } = result;
+    const { video, userToInvite, inviterName, hasAccount } = result;
+
+    // Generate invitation acceptance link
+    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+    const acceptLink = `${baseUrl}/accept-invite?videoId=${video._id}&email=${encodeURIComponent(email)}`;
 
     // Send invitation email
-    const videoLink = `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/video/${video._id}`;
-
     try {
       await sendInvitationEmail({
-        toEmail: userToInvite.email,
-        toName: userToInvite.name || userToInvite.username,
+        toEmail: email,
+        toName: userToInvite?.name || email.split('@')[0],
         videoTitle: video.title,
-        videoLink,
+        acceptLink,
         inviterName,
+        hasAccount,
       });
-      console.log(`Invitation email sent to ${userToInvite.email}`);
+      console.log(`Invitation email sent to ${email}`);
     } catch (emailError) {
       console.error('Failed to send invitation email:', emailError);
       // Don't fail the invitation if email fails, just log it
@@ -132,7 +140,7 @@ export async function DELETE(
           throw new Error('Only the video owner can remove users');
         }
 
-        video.invitedUsers = video.invitedUsers.filter((email: string) => email !== emailToRemove);
+        video.invitedUsers = video.invitedUsers.filter((invited: any) => invited.email !== emailToRemove);
         await video.save();
 
         return video;

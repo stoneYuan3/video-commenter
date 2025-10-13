@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import connectDB from '@/lib/mongodb';
 import Video from '@/models/Video';
 import Comment from '@/models/Comment';
+import User from '@/models/User';
 import { getUserFromRequest } from '@/lib/auth';
 import { executeDbOperation } from '@/lib/dbUtils';
 
@@ -17,7 +18,8 @@ export async function GET(
     const video = await executeDbOperation(
       async () => {
         return await Video.findById(id)
-          .populate('userId', 'username name email');
+          .populate('userId', 'username name email')
+          .populate('invitedUsers.userId', 'name email');
       },
       'Failed to fetch video'
     );
@@ -30,7 +32,12 @@ export async function GET(
     // video.userId is populated, so we need to access _id
     const videoOwnerId = (video.userId as any)?._id?.toString() || video.userId.toString();
     const isOwner = user && videoOwnerId === user.userId;
-    const isInvited = user && video.invitedUsers.includes(user.email);
+
+    // Check invitation status - invitedUsers is now array of objects
+    const invitedUser = user && video.invitedUsers.find((invited: any) =>
+      invited.email === user.email
+    );
+    const isInvited = invitedUser && invitedUser.accepted;
 
     // Permission checks based on video.permission
     if (video.permission === 'invited-only') {
@@ -40,15 +47,20 @@ export async function GET(
           error: 'Unauthorized',
           accessDenied: true,
           videoTitle: video.title,
-          ownerEmail: (video.userId as any)?.email
+          ownerEmail: (video.userId as any)?.email,
+          invitationStatus: 'not-logged-in'
         }, { status: 401 });
       }
       if (!isOwner && !isInvited) {
+        const isPending = invitedUser && !invitedUser.accepted;
         return NextResponse.json({
-          error: 'Access denied. You are not invited to view this video.',
+          error: isPending
+            ? 'Invitation pending. Please check your email to accept the invitation.'
+            : 'Access denied. You are not invited to view this video.',
           accessDenied: true,
           videoTitle: video.title,
-          ownerEmail: (video.userId as any)?.email
+          ownerEmail: (video.userId as any)?.email,
+          invitationStatus: isPending ? 'pending' : 'not-invited'
         }, { status: 403 });
       }
     } else if (video.permission === 'anyone-view') {

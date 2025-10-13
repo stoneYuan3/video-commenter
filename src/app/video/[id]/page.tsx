@@ -34,7 +34,16 @@ interface Video {
     email: string;
   };
   permission?: 'invited-only' | 'anyone-view' | 'anyone-edit';
-  invitedUsers?: string[]; // Array of email addresses
+  invitedUsers?: Array<{
+    email: string;
+    accepted: boolean;
+    userId?: {
+      _id: string;
+      name: string;
+      email: string;
+    };
+    invitedAt: string;
+  }>;
 }
 
 declare global {
@@ -1083,14 +1092,26 @@ export default function VideoPage() {
               </div>
               <div className="space-y-2">
                 {video.invitedUsers && video.invitedUsers.length > 0 ? (
-                  video.invitedUsers.map((email: string) => (
-                    <div key={email} className="flex items-center justify-between p-2 hover:bg-gray-50 rounded">
-                      <div>
-                        <p className="text-sm font-medium text-gray-800">{email}</p>
+                  video.invitedUsers.map((invited) => (
+                    <div key={invited.email} className="flex items-center justify-between p-2 hover:bg-gray-50 rounded">
+                      <div className="flex-1">
+                        {invited.accepted && invited.userId ? (
+                          <>
+                            <p className="text-sm font-medium text-gray-800">{invited.userId.name}</p>
+                            <p className="text-xs text-gray-500">{invited.email}</p>
+                          </>
+                        ) : (
+                          <div className="flex items-center gap-2">
+                            <p className="text-sm font-medium text-gray-800">{invited.email}</p>
+                            <span className="text-xs px-2 py-0.5 bg-yellow-100 text-yellow-800 rounded">
+                              Pending
+                            </span>
+                          </div>
+                        )}
                       </div>
                       {isOwner && (
                         <button
-                          onClick={() => removeInvitedUser(email)}
+                          onClick={() => removeInvitedUser(invited.email)}
                           className="text-red-500 hover:text-red-700"
                           title="Remove user"
                         >

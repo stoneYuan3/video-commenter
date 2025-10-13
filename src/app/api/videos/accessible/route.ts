@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import connectDB from '@/lib/mongodb';
 import Video from '@/models/Video';
+import User from '@/models/User';
 import { getUserFromRequest } from '@/lib/auth';
 
 // GET all videos accessible to the current user (owned + shared)
@@ -16,14 +17,22 @@ export async function GET(req: NextRequest) {
 
     // Find videos where:
     // 1. User is the owner, OR
-    // 2. User's email is in the invitedUsers list
+    // 2. User's email is in the invitedUsers list AND accepted is true
     const videos = await Video.find({
       $or: [
         { userId: user.userId },
-        { invitedUsers: user.email }
+        {
+          invitedUsers: {
+            $elemMatch: {
+              email: user.email,
+              accepted: true
+            }
+          }
+        }
       ]
     })
-    .populate('userId', 'username name email');
+    .populate('userId', 'username name email')
+    .populate('invitedUsers.userId', 'name email');
 
     // Sort videos by last opened time for this user (most recent first)
     const sortedVideos = videos.map(video => {

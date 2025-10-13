@@ -1,5 +1,12 @@
 import mongoose, { Schema, Document, Types } from 'mongoose';
 
+export interface InvitedUser {
+  email: string;
+  accepted: boolean;
+  userId?: Types.ObjectId; // Only set after user accepts and has account
+  invitedAt: Date;
+}
+
 export interface IVideo extends Document {
   userId: Types.ObjectId;
   title: string;
@@ -10,7 +17,7 @@ export interface IVideo extends Document {
   thumbnail?: string;
   duration: number;
   permission: 'invited-only' | 'anyone-view' | 'anyone-edit';
-  invitedUsers: string[]; // Array of email addresses
+  invitedUsers: InvitedUser[]; // Array of invited user objects
   lastOpenedBy: Map<string, Date>; // Map of userId -> last opened timestamp
   createdAt: Date;
   updatedAt: Date;
@@ -55,7 +62,24 @@ const VideoSchema = new Schema<IVideo>(
       default: 'invited-only',
     },
     invitedUsers: {
-      type: [String], // Array of email addresses
+      type: [{
+        email: {
+          type: String,
+          required: true,
+        },
+        accepted: {
+          type: Boolean,
+          default: false,
+        },
+        userId: {
+          type: Schema.Types.ObjectId,
+          ref: 'User',
+        },
+        invitedAt: {
+          type: Date,
+          default: Date.now,
+        },
+      }],
       default: [],
     },
     lastOpenedBy: {
