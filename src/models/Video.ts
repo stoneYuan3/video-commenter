@@ -10,7 +10,7 @@ export interface IVideo extends Document {
   thumbnail?: string;
   duration: number;
   permission: 'invited-only' | 'anyone-view' | 'anyone-edit';
-  invitedUsers: Types.ObjectId[];
+  invitedUsers: string[]; // Array of email addresses
   lastOpenedBy: Map<string, Date>; // Map of userId -> last opened timestamp
   createdAt: Date;
   updatedAt: Date;
@@ -55,10 +55,7 @@ const VideoSchema = new Schema<IVideo>(
       default: 'invited-only',
     },
     invitedUsers: {
-      type: [{
-        type: Schema.Types.ObjectId,
-        ref: 'User',
-      }],
+      type: [String], // Array of email addresses
       default: [],
     },
     lastOpenedBy: {

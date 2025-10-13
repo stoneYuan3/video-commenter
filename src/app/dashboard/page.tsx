@@ -13,7 +13,7 @@ interface Video {
   thumbnail?: string;
   duration: number;
   permission?: 'invited-only' | 'anyone-view' | 'anyone-edit';
-  invitedUsers?: any[];
+  invitedUsers?: string[]; // Array of email addresses
   userId?: any;
   createdAt: string;
   lastOpenedAt?: string;

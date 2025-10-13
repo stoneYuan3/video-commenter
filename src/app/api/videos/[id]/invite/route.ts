@@ -35,7 +35,7 @@ export async function POST(
 
         // Check if user is owner or invited user
         const isOwner = video.userId.toString() === user.userId;
-        const isInvited = video.invitedUsers.some((id: any) => id.toString() === user.userId);
+        const isInvited = video.invitedUsers.includes(user.email);
 
         if (!isOwner && !isInvited) {
           throw new Error('You do not have permission to invite users');
@@ -53,11 +53,11 @@ export async function POST(
           throw new Error('User is the video owner');
         }
 
-        if (video.invitedUsers.some((id: any) => id.toString() === userToInvite._id.toString())) {
+        if (video.invitedUsers.includes(email)) {
           throw new Error('User is already invited');
         }
 
-        video.invitedUsers.push(userToInvite._id);
+        video.invitedUsers.push(email);
         await video.save();
 
         // Get the inviter's name
@@ -88,14 +88,7 @@ export async function POST(
       // Don't fail the invitation if email fails, just log it
     }
 
-    // Populate invited users for response
-    await executeDbOperation(
-      async () => {
-        await video.populate('invitedUsers', 'username name');
-      },
-      'Failed to populate invited users'
-    );
-
+    // No need to populate invitedUsers since it's now an array of emails
     return NextResponse.json({ video }, { status: 200 });
   } catch (error: any) {
     console.error('Invite user error:', error);
@@ -120,10 +113,10 @@ export async function DELETE(
 
     const { id } = await params;
     const { searchParams } = new URL(req.url);
-    const userIdToRemove = searchParams.get('userId');
+    const emailToRemove = searchParams.get('email');
 
-    if (!userIdToRemove) {
-      return NextResponse.json({ error: 'User ID is required' }, { status: 400 });
+    if (!emailToRemove) {
+      return NextResponse.json({ error: 'Email is required' }, { status: 400 });
     }
 
     const video = await executeDbOperation(
@@ -139,11 +132,8 @@ export async function DELETE(
           throw new Error('Only the video owner can remove users');
         }
 
-        video.invitedUsers = video.invitedUsers.filter((id: any) => id.toString() !== userIdToRemove);
+        video.invitedUsers = video.invitedUsers.filter((email: string) => email !== emailToRemove);
         await video.save();
-
-        // Populate invited users for response
-        await video.populate('invitedUsers', 'username name');
 
         return video;
       },

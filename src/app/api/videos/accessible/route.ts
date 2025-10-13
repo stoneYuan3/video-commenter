@@ -16,15 +16,14 @@ export async function GET(req: NextRequest) {
 
     // Find videos where:
     // 1. User is the owner, OR
-    // 2. User is in the invitedUsers list
+    // 2. User's email is in the invitedUsers list
     const videos = await Video.find({
       $or: [
         { userId: user.userId },
-        { invitedUsers: user.userId }
+        { invitedUsers: user.email }
       ]
     })
-    .populate('userId', 'username name email')
-    .populate('invitedUsers', 'username name email');
+    .populate('userId', 'username name email');
 
     // Sort videos by last opened time for this user (most recent first)
     const sortedVideos = videos.map(video => {

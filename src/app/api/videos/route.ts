@@ -15,8 +15,7 @@ export async function GET(req: NextRequest) {
     await connectDB();
 
     const videos = await Video.find({ userId: user.userId })
-      .sort({ createdAt: -1 })
-      .populate('invitedUsers', 'username name');
+      .sort({ createdAt: -1 });
 
     return NextResponse.json({ videos }, { status: 200 });
   } catch (error: any) {

@@ -28,7 +28,7 @@ export async function GET(req: NextRequest) {
 
     // Check if user has permission to view comments
     const isOwner = user && video.userId.toString() === user.userId;
-    const isInvited = user && video.invitedUsers.some((id: any) => id.toString() === user.userId);
+    const isInvited = user && video.invitedUsers.includes(user.email);
 
     if (video.permission === 'invited-only') {
       // For invited-only, must be logged in and either owner or invited

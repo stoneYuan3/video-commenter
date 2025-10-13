@@ -17,7 +17,6 @@ export async function GET(
     const video = await executeDbOperation(
       async () => {
         return await Video.findById(id)
-          .populate('invitedUsers', 'username name email')
           .populate('userId', 'username name email');
       },
       'Failed to fetch video'
@@ -31,7 +30,7 @@ export async function GET(
     // video.userId is populated, so we need to access _id
     const videoOwnerId = (video.userId as any)?._id?.toString() || video.userId.toString();
     const isOwner = user && videoOwnerId === user.userId;
-    const isInvited = user && video.invitedUsers.some((invitedUser: any) => invitedUser._id.toString() === user.userId);
+    const isInvited = user && video.invitedUsers.includes(user.email);
 
     // Permission checks based on video.permission
     if (video.permission === 'invited-only') {

@@ -34,7 +34,7 @@ interface Video {
     email: string;
   };
   permission?: 'invited-only' | 'anyone-view' | 'anyone-edit';
-  invitedUsers?: any[];
+  invitedUsers?: string[]; // Array of email addresses
 }
 
 declare global {
@@ -488,12 +488,12 @@ export default function VideoPage() {
     }
   };
 
-  const removeInvitedUser = async (userId: string) => {
+  const removeInvitedUser = async (email: string) => {
     if (!video) return;
     if (!confirm('Are you sure you want to remove this user?')) return;
 
     try {
-      const res = await fetch(`/api/videos/${video._id}/invite?userId=${userId}`, {
+      const res = await fetch(`/api/videos/${video._id}/invite?email=${encodeURIComponent(email)}`, {
         method: 'DELETE',
       });
 
@@ -1069,8 +1069,7 @@ export default function VideoPage() {
             }`}>
               <div className="flex justify-between items-center mb-4">
                 <h2 className="text-xl font-semibold text-gray-800">Invited Commenters</h2>
-                {(isOwner || video.invitedUsers?.some((u: any) => u._id === currentUserId)) &&
-                 video.permission !== 'anyone-edit' && (
+                {isOwner && video.permission !== 'anyone-edit' && (
                   <button
                     onClick={() => setShowInviteModal(true)}
                     className="text-blue-500 hover:text-blue-700"
@@ -1084,15 +1083,14 @@ export default function VideoPage() {
               </div>
               <div className="space-y-2">
                 {video.invitedUsers && video.invitedUsers.length > 0 ? (
-                  video.invitedUsers.map((user: any) => (
-                    <div key={user._id} className="flex items-center justify-between p-2 hover:bg-gray-50 rounded">
+                  video.invitedUsers.map((email: string) => (
+                    <div key={email} className="flex items-center justify-between p-2 hover:bg-gray-50 rounded">
                       <div>
-                        <p className="text-sm font-medium text-gray-800">{user.name || user.username}</p>
-                        <p className="text-xs text-gray-500">{user.email}</p>
+                        <p className="text-sm font-medium text-gray-800">{email}</p>
                       </div>
                       {isOwner && (
                         <button
-                          onClick={() => removeInvitedUser(user._id)}
+                          onClick={() => removeInvitedUser(email)}
                           className="text-red-500 hover:text-red-700"
                           title="Remove user"
                         >
