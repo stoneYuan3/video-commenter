@@ -79,6 +79,19 @@ export async function DELETE(
       return NextResponse.json({ error: 'Unauthorized to delete this comment' }, { status: 403 });
     }
 
+    // If this is a reply, remove it from parent's replies array
+    if (comment.parentCommentId) {
+      await Comment.findByIdAndUpdate(
+        comment.parentCommentId,
+        { $pull: { replies: comment._id } }
+      );
+    }
+
+    // Delete all replies first
+    if (comment.replies && comment.replies.length > 0) {
+      await Comment.deleteMany({ _id: { $in: comment.replies } });
+    }
+
     await Comment.findByIdAndDelete(id);
 
     return NextResponse.json({ message: 'Comment deleted successfully' }, { status: 200 });

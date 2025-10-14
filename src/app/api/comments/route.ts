@@ -43,8 +43,15 @@ export async function GET(req: NextRequest) {
     }
     // For anyone-view and anyone-edit, allow viewing comments without login
 
-    const comments = await Comment.find({ videoId })
+    const comments = await Comment.find({ videoId, parentCommentId: { $exists: false } })
       .populate('userId', 'name email username')
+      .populate({
+        path: 'replies',
+        populate: {
+          path: 'userId',
+          select: 'name email username'
+        }
+      })
       .sort({ timestamp: 1, 'timeRange.start': 1 });
 
     return NextResponse.json({ comments }, { status: 200 });
@@ -68,12 +75,20 @@ export async function POST(req: NextRequest) {
 
     await connectDB();
 
-    const { videoId, text, timestamp, timeRange, timeString, color } = await req.json();
+    const { videoId, text, timestamp, timeRange, timeString, color, parentCommentId } = await req.json();
 
     // Validation
-    if (!videoId || !text || !timeString || !color) {
+    if (!videoId || !text) {
       return NextResponse.json(
-        { error: 'Video ID, text, time string, and color are required' },
+        { error: 'Video ID and text are required' },
+        { status: 400 }
+      );
+    }
+
+    // For replies, we don't need timeString and color
+    if (!parentCommentId && (!timeString || !color)) {
+      return NextResponse.json(
+        { error: 'Time string and color are required for top-level comments' },
         { status: 400 }
       );
     }
@@ -86,7 +101,16 @@ export async function POST(req: NextRequest) {
       timeRange,
       timeString,
       color,
+      parentCommentId,
     });
+
+    // If this is a reply, add it to the parent comment's replies array
+    if (parentCommentId) {
+      await Comment.findByIdAndUpdate(
+        parentCommentId,
+        { $push: { replies: comment._id } }
+      );
+    }
 
     // Populate user info for response
     const populatedComment = await Comment.findById(comment._id).populate('userId', 'name email');
