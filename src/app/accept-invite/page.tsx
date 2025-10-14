@@ -8,7 +8,7 @@ type PageState =
   | { status: 'LOADING' }
   | { status: 'INVALID_LINK'; missingVideoId: boolean; missingEmail: boolean }
   | { status: 'ERROR'; message: string }
-  | { status: 'WRONG_ACCOUNT'; invitedEmail: string; currentEmail: string }
+  | { status: 'WRONG_ACCOUNT'; invitedEmail: string }
   | { status: 'SIGNUP_REQUIRED'; videoTitle: string; email: string; validationError?: string }
   | { status: 'SIGNING_UP'; videoTitle: string; email: string; validationError?: string }
   | { status: 'REDIRECTING' };
@@ -71,8 +71,7 @@ function AcceptInviteContent() {
             // User is logged in with different email
             setPageState({
               status: 'WRONG_ACCOUNT',
-              invitedEmail: email as string,
-              currentEmail: userData.email
+              invitedEmail: email as string
             });
             return;
           }
@@ -252,10 +251,9 @@ function AcceptInviteContent() {
           <div className="text-center max-w-md mx-auto bg-white p-8 rounded-lg shadow-lg">
             <div className="text-6xl mb-4">⚠️</div>
             <h1 className="text-2xl font-bold text-gray-800 mb-4">Wrong Account</h1>
-            <div className="text-gray-600 mb-6">
-              {/* <p className="mb-2">You are currently logged in with <strong>{pageState.currentEmail}</strong>.</p> */}
-              <p>Please log out and log in with <strong>{pageState.invitedEmail}</strong> to access this video.</p>
-            </div>
+            <p className="text-gray-600 mb-6">
+              You are logged in with a different account. Please log out and log in with {pageState.invitedEmail} to access this video.
+            </p>
             <button
               onClick={() => router.push('/login')}
               className="px-6 py-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors font-medium"
