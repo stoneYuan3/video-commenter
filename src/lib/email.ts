@@ -1,6 +1,13 @@
-// Using Resend for email delivery
-// Install: npm install resend
-// Set environment variable: RESEND_API_KEY=your_api_key
+// Using cPanel SMTP for email delivery
+// Requires nodemailer (already installed)
+// Set environment variables in .env.local:
+//   SMTP_HOST=mail.yourdomain.com
+//   SMTP_PORT=465 (or 587 for TLS)
+//   SMTP_USER=your-email@yourdomain.com
+//   SMTP_PASSWORD=your-email-password
+//   SMTP_FROM=Video Commenter <your-email@yourdomain.com>
+
+import nodemailer from 'nodemailer';
 
 export async function sendInvitationEmail({
   toEmail,
@@ -17,12 +24,22 @@ export async function sendInvitationEmail({
   inviterName: string;
   hasAccount: boolean;
 }) {
-  const RESEND_API_KEY = process.env.RESEND_API_KEY;
-
-  if (!RESEND_API_KEY) {
-    console.warn('RESEND_API_KEY not configured, skipping email send');
-    return { success: false, error: 'API key not configured' };
+  // Check for required SMTP configuration
+  if (!process.env.SMTP_HOST || !process.env.SMTP_USER || !process.env.SMTP_PASSWORD) {
+    console.warn('SMTP configuration not complete, skipping email send');
+    return { success: false, error: 'SMTP not configured' };
   }
+
+  // Create transporter with cPanel SMTP settings
+  const transporter = nodemailer.createTransport({
+    host: process.env.SMTP_HOST,
+    port: parseInt(process.env.SMTP_PORT || '465'),
+    secure: process.env.SMTP_PORT === '465', // true for 465, false for other ports
+    auth: {
+      user: process.env.SMTP_USER,
+      pass: process.env.SMTP_PASSWORD,
+    },
+  });
 
   const emailHtml = `
     <!DOCTYPE html>
@@ -120,31 +137,18 @@ This email was sent from Video Commenter
   `;
 
   try {
-    const response = await fetch('https://api.resend.com/emails', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${RESEND_API_KEY}`,
-      },
-      body: JSON.stringify({
-        from: process.env.FROM_EMAIL || 'Video Commenter <onboarding@resend.dev>',
-        to: toEmail,
-        subject: `You've been invited to edit "${videoTitle}"`,
-        html: emailHtml,
-        text: emailText,
-      }),
+    const info = await transporter.sendMail({
+      from: process.env.SMTP_FROM || process.env.SMTP_USER,
+      to: toEmail,
+      subject: `You've been invited to edit "${videoTitle}"`,
+      html: emailHtml,
+      text: emailText,
     });
 
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(JSON.stringify(error));
-    }
-
-    const data = await response.json();
-    console.log('Email sent successfully via Resend:', data.id);
-    return { success: true, messageId: data.id };
+    console.log('Email sent successfully via cPanel SMTP:', info.messageId);
+    return { success: true, messageId: info.messageId };
   } catch (error) {
-    console.error('Error sending email via Resend:', error);
+    console.error('Error sending email via cPanel SMTP:', error);
     return { success: false, error };
   }
 }
