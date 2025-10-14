@@ -98,8 +98,6 @@ export async function sendInvitationEmail({
             ? '<p>Click the button below to accept the invitation and view the video:</p>'
             : '<p>You need to create an account first. Click the button below to sign up and accept the invitation:</p>'}
           <a href="${acceptLink}" class="button">Accept Invitation</a>
-          <p>Or copy and paste this link into your browser:</p>
-          <p style="word-break: break-all; color: #0066cc;">${acceptLink}</p>
           <hr style="margin: 30px 0; border: none; border-top: 1px solid #ddd;">
           <p style="font-size: 14px; color: #666;">
             ${hasAccount

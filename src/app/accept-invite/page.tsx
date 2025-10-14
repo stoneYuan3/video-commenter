@@ -17,6 +17,7 @@ function AcceptInviteContent() {
   const [signupPassword, setSignupPassword] = useState('');
   const [signupName, setSignupName] = useState('');
   const [signingUp, setSigningUp] = useState(false);
+  const [redirecting, setRedirecting] = useState(false);
 
   useEffect(() => {
     if (!videoId || !email) {
@@ -56,22 +57,25 @@ function AcceptInviteContent() {
           const userData = await userRes.json();
           if (userData.email === email) {
             // User is logged in with the invited email, redirect to video
-            router.push(`/video/${videoId}`);
+            window.location.href = `/video/${videoId}`;
             return;
           } else {
             // User is logged in with different email, ask them to login with invited email
+            setLoading(false);
             setError(`Please log out and log in with ${email} to access this video.`);
+            return;
           }
         } else {
           // User has account but not logged in, redirect to login
-          router.push(`/login?redirect=/video/${videoId}`);
+          window.location.href = `/login?redirect=/video/${videoId}`;
+          return;
         }
       }
       // If no account, show signup form (handled by state)
-    } catch (err: any) {
-      setError(err.message);
-    } finally {
       setLoading(false);
+    } catch (err: any) {
+      setLoading(false);
+      setError(err.message);
     }
   };
 
@@ -134,19 +138,20 @@ function AcceptInviteContent() {
       }
 
       // Redirect to video
-      router.push(`/video/${videoId}`);
+      window.location.href = `/video/${videoId}`;
     } catch (err: any) {
       setError(err.message);
-    } finally {
       setSigningUp(false);
     }
   };
 
-  if (loading) {
+  if (loading || redirecting) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
-          <div className="text-gray-600 mb-2">Processing invitation...</div>
+          <div className="text-gray-600 mb-2">
+            {redirecting ? 'Redirecting...' : 'Processing invitation...'}
+          </div>
         </div>
       </div>
     );
@@ -274,7 +279,14 @@ function AcceptInviteContent() {
     );
   }
 
-  return null;
+  // For users with accounts who are being redirected - show redirecting message
+  return (
+    <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+      <div className="text-center">
+        <div className="text-gray-600 mb-2">Redirecting...</div>
+      </div>
+    </div>
+  );
 }
 
 export default function AcceptInvitePage() {
