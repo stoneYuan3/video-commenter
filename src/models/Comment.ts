@@ -11,6 +11,8 @@ export interface IComment extends Document {
   };
   timeString: string;
   color: string;
+  parentCommentId?: Types.ObjectId;
+  replies?: Types.ObjectId[];
   createdAt: Date;
   updatedAt: Date;
 }
@@ -40,12 +42,18 @@ const CommentSchema = new Schema<IComment>(
     },
     timeString: {
       type: String,
-      required: true,
     },
     color: {
       type: String,
-      required: true,
     },
+    parentCommentId: {
+      type: Schema.Types.ObjectId,
+      ref: 'Comment',
+    },
+    replies: [{
+      type: Schema.Types.ObjectId,
+      ref: 'Comment',
+    }],
   },
   {
     timestamps: true,
@@ -55,5 +63,11 @@ const CommentSchema = new Schema<IComment>(
 // Index for faster queries
 CommentSchema.index({ videoId: 1, timestamp: 1 });
 CommentSchema.index({ videoId: 1, userId: 1 });
+CommentSchema.index({ parentCommentId: 1 });
 
-export default mongoose.models.Comment || mongoose.model<IComment>('Comment', CommentSchema);
+// Force clear the model cache to ensure fresh schema
+if (mongoose.models.Comment) {
+  delete mongoose.models.Comment;
+}
+
+export default mongoose.model<IComment>('Comment', CommentSchema);
