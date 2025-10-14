@@ -252,7 +252,7 @@ function AcceptInviteContent() {
             <div className="text-6xl mb-4">⚠️</div>
             <h1 className="text-2xl font-bold text-gray-800 mb-4">Wrong Account</h1>
             <p className="text-gray-600 mb-6">
-              You are logged in with a different account. Please log out and log in with {pageState.invitedEmail} to access this video.
+              You are logged in with a different account. Please log in with {pageState.invitedEmail} to access this video.
             </p>
             <button
               onClick={() => router.push('/login')}
