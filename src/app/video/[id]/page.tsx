@@ -862,6 +862,10 @@ export default function VideoPage() {
                   </div>
                 )}
 
+                <div className='mb-1 text-sm text-gray-600'>
+                  <p>Click on the timeline to mark a timestamp, drag on the timeline to mark a time range.</p>
+                </div>
+
                 <div
                   ref={timelineRef}
                   className="relative h-12 bg-gray-200 rounded-lg cursor-pointer hover:bg-gray-300 transition-colors"
