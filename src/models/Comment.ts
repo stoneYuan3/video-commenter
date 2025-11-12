@@ -65,9 +65,4 @@ CommentSchema.index({ videoId: 1, timestamp: 1 });
 CommentSchema.index({ videoId: 1, userId: 1 });
 CommentSchema.index({ parentCommentId: 1 });
 
-// Force clear the model cache to ensure fresh schema
-if (mongoose.models.Comment) {
-  delete mongoose.models.Comment;
-}
-
-export default mongoose.model<IComment>('Comment', CommentSchema);
+export default mongoose.models.Comment || mongoose.model<IComment>('Comment', CommentSchema);

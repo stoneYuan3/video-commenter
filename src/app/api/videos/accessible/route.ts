@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import connectDB from '@/lib/mongodb';
-import Video from '@/models/Video';
-import User from '@/models/User';
+import initializeModels from '@/lib/initModels';
 import { getUserFromRequest } from '@/lib/auth';
 
 // GET all videos accessible to the current user (owned + shared)
@@ -44,6 +43,12 @@ export async function GET(req: NextRequest) {
       });
       throw dbError;
     }
+
+    // Initialize all models to prevent MissingSchemaError during populate()
+    // This is critical for serverless environments after cold starts
+    console.log(`[${timestamp}] [${requestId}] Initializing models...`);
+    const { Video, User } = initializeModels();
+    console.log(`[${timestamp}] [${requestId}] Models initialized successfully`);
 
     console.log(`[${timestamp}] [${requestId}] Querying videos for user...`);
     const queryStartTime = Date.now();
