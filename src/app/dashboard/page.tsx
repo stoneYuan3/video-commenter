@@ -40,38 +40,111 @@ export default function DashboardPage() {
   }, []);
 
   const fetchVideos = async () => {
+    const fetchStartTime = Date.now();
+    const timestamp = new Date().toISOString();
+
+    console.log(`[${timestamp}] Dashboard: Starting to fetch videos...`);
+
     try {
       // Get current user ID
+      console.log(`[${timestamp}] Dashboard: Fetching current user info...`);
       const userRes = await fetch('/api/auth/me');
+
+      console.log(`[${timestamp}] Dashboard: User API response:`, {
+        status: userRes.status,
+        statusText: userRes.statusText,
+        ok: userRes.ok,
+      });
+
       if (userRes.ok) {
         const userData = await userRes.json();
         setCurrentUserId(userData.userId);
+        console.log(`[${timestamp}] Dashboard: Current user ID set:`, userData.userId);
       }
 
       // Fetch all accessible videos (owned + shared)
+      console.log(`[${timestamp}] Dashboard: Fetching accessible videos...`);
+      const accessibleStartTime = Date.now();
       const accessibleRes = await fetch('/api/videos/accessible');
+      const accessibleTime = Date.now() - accessibleStartTime;
+
+      console.log(`[${timestamp}] Dashboard: Accessible videos API response (took ${accessibleTime}ms):`, {
+        status: accessibleRes.status,
+        statusText: accessibleRes.statusText,
+        ok: accessibleRes.ok,
+      });
+
       if (accessibleRes.status === 401) {
+        console.log(`[${timestamp}] Dashboard: Unauthorized, redirecting to login...`);
         router.push('/login');
         return;
       }
+
       if (!accessibleRes.ok) {
-        throw new Error('Failed to fetch accessible videos');
+        const errorData = await accessibleRes.json().catch(() => ({}));
+        console.error(`[${timestamp}] Dashboard: Failed to fetch accessible videos`, {
+          status: accessibleRes.status,
+          statusText: accessibleRes.statusText,
+          errorData,
+        });
+        throw new Error(
+          `Failed to fetch accessible videos: ${errorData.error || accessibleRes.statusText}` +
+          (errorData.errorType ? ` (${errorData.errorType})` : '') +
+          (errorData.requestId ? ` [RequestID: ${errorData.requestId}]` : '')
+        );
       }
+
       const accessibleData = await accessibleRes.json();
+      console.log(`[${timestamp}] Dashboard: Accessible videos received:`, {
+        count: accessibleData.videos?.length || 0,
+      });
       setAllVideos(accessibleData.videos);
 
       // Fetch only owned videos
+      console.log(`[${timestamp}] Dashboard: Fetching owned videos...`);
+      const ownedStartTime = Date.now();
       const ownedRes = await fetch('/api/videos');
+      const ownedTime = Date.now() - ownedStartTime;
+
+      console.log(`[${timestamp}] Dashboard: Owned videos API response (took ${ownedTime}ms):`, {
+        status: ownedRes.status,
+        statusText: ownedRes.statusText,
+        ok: ownedRes.ok,
+      });
+
       if (ownedRes.status === 401) {
+        console.log(`[${timestamp}] Dashboard: Unauthorized, redirecting to login...`);
         router.push('/login');
         return;
       }
+
       if (!ownedRes.ok) {
-        throw new Error('Failed to fetch owned videos');
+        const errorData = await ownedRes.json().catch(() => ({}));
+        console.error(`[${timestamp}] Dashboard: Failed to fetch owned videos`, {
+          status: ownedRes.status,
+          statusText: ownedRes.statusText,
+          errorData,
+        });
+        throw new Error(
+          `Failed to fetch owned videos: ${errorData.error || ownedRes.statusText}`
+        );
       }
+
       const ownedData = await ownedRes.json();
+      console.log(`[${timestamp}] Dashboard: Owned videos received:`, {
+        count: ownedData.videos?.length || 0,
+      });
       setMyVideos(ownedData.videos);
+
+      const totalTime = Date.now() - fetchStartTime;
+      console.log(`[${timestamp}] Dashboard: All videos fetched successfully in ${totalTime}ms`);
     } catch (err: any) {
+      const totalTime = Date.now() - fetchStartTime;
+      console.error(`[${timestamp}] Dashboard: Error fetching videos (after ${totalTime}ms):`, {
+        errorName: err.name,
+        errorMessage: err.message,
+        errorStack: err.stack,
+      });
       setError(err.message);
     } finally {
       setLoading(false);
