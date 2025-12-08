@@ -13,11 +13,11 @@
     "bcryptjs": "^3.0.2",
     "jsonwebtoken": "^9.0.2",
     "mongoose": "^8.19.1",
-    "next": "15.5.4",
+    "next": "15.5.7",
     "next-auth": "^5.0.0-beta.29",
     "nodemailer": "^6.10.1",
-    "react": "19.1.0",
-    "react-dom": "19.1.0"
+    "react": "19.1.2",
+    "react-dom": "19.1.2"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
