@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import connectDB from '@/lib/mongodb';
+import initializeModels from '@/lib/initModels';
 import Comment from '@/models/Comment';
 import { getUserFromRequest } from '@/lib/auth';
 
@@ -16,6 +17,7 @@ export async function PUT(
     }
 
     await connectDB();
+    initializeModels();
 
     const { id } = await params;
     const { text } = await req.json();

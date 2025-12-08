@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import connectDB from '@/lib/mongodb';
+import initializeModels from '@/lib/initModels';
 import Video from '@/models/Video';
 import Comment from '@/models/Comment';
 import User from '@/models/User';
@@ -14,6 +15,9 @@ export async function GET(
   try {
     const user = getUserFromRequest(req);
     const { id } = await params;
+
+    await connectDB();
+    initializeModels();
 
     const video = await executeDbOperation(
       async () => {

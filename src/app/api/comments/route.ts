@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import connectDB from '@/lib/mongodb';
+import initializeModels from '@/lib/initModels';
 import Comment from '@/models/Comment';
 import Video from '@/models/Video';
 import User from '@/models/User';
@@ -11,6 +12,7 @@ export async function GET(req: NextRequest) {
     const user = getUserFromRequest(req);
 
     await connectDB();
+    initializeModels();
 
     const { searchParams } = new URL(req.url);
     const videoId = searchParams.get('videoId');
@@ -74,6 +76,7 @@ export async function POST(req: NextRequest) {
     }
 
     await connectDB();
+    initializeModels();
 
     const { videoId, text, timestamp, timeRange, timeString, color, parentCommentId } = await req.json();
 
