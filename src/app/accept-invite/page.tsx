@@ -8,6 +8,7 @@ type PageState =
   | { status: 'LOADING' }
   | { status: 'INVALID_LINK'; missingVideoId: boolean; missingEmail: boolean }
   | { status: 'ERROR'; message: string }
+  | { status: 'INVITATION_NOT_FOUND'; videoTitle?: string; ownerEmail?: string }
   | { status: 'WRONG_ACCOUNT'; invitedEmail: string }
   | { status: 'SIGNUP_REQUIRED'; videoTitle: string; email: string; validationError?: string }
   | { status: 'SIGNING_UP'; videoTitle: string; email: string; validationError?: string }
@@ -52,6 +53,17 @@ function AcceptInviteContent() {
 
       if (!res.ok) {
         const data = await res.json();
+
+        // Check if this is an invitation not found error
+        if (data.invitationNotFound) {
+          setPageState({
+            status: 'INVITATION_NOT_FOUND',
+            videoTitle: data.videoTitle,
+            ownerEmail: data.ownerEmail
+          });
+          return;
+        }
+
         throw new Error(data.error || 'Failed to accept invitation');
       }
 
@@ -235,6 +247,33 @@ function AcceptInviteContent() {
             <div className="text-6xl mb-4">⚠️</div>
             <h1 className="text-2xl font-bold text-gray-800 mb-4">Error</h1>
             <p className="text-gray-600 mb-6">{pageState.message}</p>
+            <button
+              onClick={() => router.push('/login')}
+              className="px-6 py-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors font-medium"
+            >
+              Go to Login
+            </button>
+          </div>
+        </div>
+      );
+
+    case 'INVITATION_NOT_FOUND':
+      return (
+        <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+          <div className="text-center max-w-md mx-auto bg-white p-8 rounded-lg shadow-lg">
+            <div className="text-6xl mb-4">🔗</div>
+            <h1 className="text-2xl font-bold text-gray-800 mb-4">Invitation Not Found</h1>
+            <p className="text-gray-600 mb-6">
+              This invitation could not be found. It may have been removed by the video owner.
+            </p>
+            <p className="text-gray-600 mb-6">
+              Please contact the video owner to request a new invitation.
+            </p>
+            {pageState.ownerEmail && (
+              <p className="text-sm text-gray-500 mb-6">
+                Owner: {pageState.ownerEmail}
+              </p>
+            )}
             <button
               onClick={() => router.push('/login')}
               className="px-6 py-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors font-medium"

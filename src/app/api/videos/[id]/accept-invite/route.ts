@@ -35,7 +35,13 @@ export async function POST(
         );
 
         if (invitationIndex === -1) {
-          throw new Error('Invitation not found');
+          // Return specific error response for deleted/not-found invitations
+          const populatedVideo = await video.populate('userId', 'email');
+          return {
+            notFound: true,
+            videoTitle: video.title,
+            ownerEmail: (populatedVideo.userId as any)?.email
+          };
         }
 
         const invitation = video.invitedUsers[invitationIndex];
@@ -63,7 +69,17 @@ export async function POST(
       'Failed to accept invitation'
     );
 
-    const { video, hasAccount, alreadyAccepted } = result;
+    const { video, hasAccount, alreadyAccepted, notFound, videoTitle, ownerEmail } = result as any;
+
+    // Handle invitation not found case
+    if (notFound) {
+      return NextResponse.json({
+        error: 'Invitation not found. Please contact the video owner.',
+        invitationNotFound: true,
+        videoTitle,
+        ownerEmail
+      }, { status: 404 });
+    }
 
     return NextResponse.json({
       success: true,
