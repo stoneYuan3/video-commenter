@@ -496,7 +496,30 @@ export default function VideoPage() {
         throw new Error('Failed to delete comment');
       }
 
-      setComments(prev => prev.filter(c => c._id !== commentId));
+      //2025-12-07
+      // Update state to handle both top-level comment deletion and nested reply deletion
+      // This ensures deleted items disappear immediately from the UI without requiring a page refresh
+      setComments(prev => prev.map(comment => {
+        // Check if we're deleting this top-level comment
+        if (comment._id === commentId) {
+          return null; // Mark for removal
+        }
+
+        // Check if we're deleting a reply to this comment
+        if (comment.replies && comment.replies.length > 0) {
+          const replyIndex = comment.replies.findIndex(r => r._id === commentId);
+          if (replyIndex !== -1) {
+            // Found the reply in this comment's replies array
+            // Create new comment object with updated replies (immutable update)
+            return {
+              ...comment,
+              replies: comment.replies.filter(r => r._id !== commentId)
+            };
+          }
+        }
+
+        return comment; // Keep unchanged
+      }).filter(c => c !== null) as Comment[]); // Remove marked nulls (deleted top-level comments)
     } catch (err: any) {
       console.error('Delete comment error:', err);
       alert('Failed to delete comment');
