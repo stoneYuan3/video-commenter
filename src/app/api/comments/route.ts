@@ -16,6 +16,7 @@ export async function GET(req: NextRequest) {
 
     const { searchParams } = new URL(req.url);
     const videoId = searchParams.get('videoId');
+    const videoIndex = parseInt(searchParams.get('videoIndex') || '0', 10);
 
     if (!videoId) {
       return NextResponse.json({ error: 'Video ID is required' }, { status: 400 });
@@ -45,7 +46,11 @@ export async function GET(req: NextRequest) {
     }
     // For anyone-view and anyone-edit, allow viewing comments without login
 
-    const comments = await Comment.find({ videoId, parentCommentId: { $exists: false } })
+    const comments = await Comment.find({
+      videoId,
+      videoIndex,  // NEW: Filter by videoIndex
+      parentCommentId: { $exists: false }
+    })
       .populate('userId', 'name email username')
       .populate({
         path: 'replies',
@@ -78,7 +83,7 @@ export async function POST(req: NextRequest) {
     await connectDB();
     initializeModels();
 
-    const { videoId, text, timestamp, timeRange, timeString, color, parentCommentId } = await req.json();
+    const { videoId, text, timestamp, timeRange, timeString, color, parentCommentId, videoIndex = 0 } = await req.json();
 
     // Validation
     if (!videoId || !text) {
@@ -105,6 +110,7 @@ export async function POST(req: NextRequest) {
       timeString,
       color,
       parentCommentId,
+      videoIndex,  // NEW: Save videoIndex
     });
 
     // If this is a reply, add it to the parent comment's replies array

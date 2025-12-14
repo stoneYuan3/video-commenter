@@ -22,13 +22,29 @@ interface Comment {
   replies?: Comment[];
 }
 
-interface Video {
-  _id: string;
-  title: string;
+interface VideoItem {
   videoSource: 'youtube' | 'upload' | 'gdrive';
   videoId?: string;
   gdriveId?: string;
   uploadedVideoUrl?: string;
+  duration?: number;
+  thumbnail?: string;
+  order: number;
+}
+
+interface Video {
+  _id: string;
+  title: string;
+
+  // NEW: Videos array
+  videos?: VideoItem[];
+
+  // LEGACY: Keep for backward compatibility
+  videoSource?: 'youtube' | 'upload' | 'gdrive';
+  videoId?: string;
+  gdriveId?: string;
+  uploadedVideoUrl?: string;
+
   duration: number;
   userId?: {
     _id: string;
@@ -86,6 +102,7 @@ export default function VideoPage() {
   const [videoTitle, setVideoTitle] = useState('');
   const [replyingToCommentId, setReplyingToCommentId] = useState<string | null>(null);
   const [replyText, setReplyText] = useState('');
+  const [currentVideoIndex, setCurrentVideoIndex] = useState(0);
 
   const playerRef = useRef<any>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -96,6 +113,31 @@ export default function VideoPage() {
   const currentVideoIdRef = useRef<string>('');
   const commentsContainerRef = useRef<HTMLDivElement>(null);
   const commentRefs = useRef<Map<string, HTMLDivElement>>(new Map());
+
+  // Helper to get current video (supports both old and new structure)
+  const getCurrentVideo = useCallback((): VideoItem | null => {
+    if (!video) return null;
+
+    // Try new structure first
+    if (video.videos && video.videos.length > currentVideoIndex) {
+      return video.videos[currentVideoIndex];
+    }
+
+    // Fallback to old structure
+    if (video.videoSource) {
+      return {
+        videoSource: video.videoSource,
+        videoId: video.videoId,
+        gdriveId: video.gdriveId,
+        uploadedVideoUrl: video.uploadedVideoUrl,
+        duration: video.duration,
+        thumbnail: undefined,
+        order: 0
+      };
+    }
+
+    return null;
+  }, [video, currentVideoIndex]);
 
   // Fetch video and comments on mount
   useEffect(() => {
@@ -154,7 +196,7 @@ export default function VideoPage() {
       }
 
       // Fetch comments
-      const commentsRes = await fetch(`/api/comments?videoId=${videoIdParam}`);
+      const commentsRes = await fetch(`/api/comments?videoId=${videoIdParam}&videoIndex=${currentVideoIndex}`);
       if (commentsRes.ok) {
         const commentsData = await commentsRes.json();
         setComments(commentsData.comments);
@@ -195,7 +237,8 @@ export default function VideoPage() {
 
   // Reset initialization flag when video changes
   useEffect(() => {
-    if (video?.videoSource !== 'youtube') {
+    const currentVideo = getCurrentVideo();
+    if (currentVideo?.videoSource !== 'youtube') {
       if (playerRef.current && playerRef.current.destroy) {
         playerRef.current.destroy();
         playerRef.current = null;
@@ -203,16 +246,18 @@ export default function VideoPage() {
       playerInitializedRef.current = false;
       currentVideoIdRef.current = '';
     }
-  }, [video?.videoSource, video?.videoId]);
+  }, [getCurrentVideo]);
 
   // Callback ref for YouTube player div - called when div is rendered
   const youtubePlayerCallback = useCallback((node: HTMLDivElement | null) => {
-    if (!node || !video || video.videoSource !== 'youtube' || !video.videoId) {
+    const currentVideo = getCurrentVideo();
+
+    if (!node || !currentVideo || currentVideo.videoSource !== 'youtube' || !currentVideo.videoId) {
       return;
     }
 
     // Check if already initialized with the same video
-    if (playerInitializedRef.current && currentVideoIdRef.current === video.videoId && playerRef.current) {
+    if (playerInitializedRef.current && currentVideoIdRef.current === currentVideo.videoId && playerRef.current) {
       return;
     }
 
@@ -227,7 +272,7 @@ export default function VideoPage() {
         playerRef.current = new window.YT.Player(node, {
           height: '480',
           width: '100%',
-          videoId: video.videoId,
+          videoId: currentVideo.videoId,
           playerVars: {
             'playsinline': 1,
             'controls': 0,
@@ -239,7 +284,7 @@ export default function VideoPage() {
           }
         });
         playerInitializedRef.current = true;
-        currentVideoIdRef.current = video.videoId || '';
+        currentVideoIdRef.current = currentVideo.videoId || '';
       } catch (error) {
         console.error('Error creating YouTube player:', error);
       }
@@ -260,7 +305,7 @@ export default function VideoPage() {
       // Cleanup interval after 10 seconds
       setTimeout(() => clearInterval(checkInterval), 10000);
     }
-  }, [video]);
+  }, [getCurrentVideo]);
 
   const onPlayerReady = () => {
     const dur = playerRef.current.getDuration();
@@ -364,6 +409,7 @@ export default function VideoPage() {
 
     const commentData = {
       videoId: video._id,
+      videoIndex: currentVideoIndex,
       text: newComment,
       timeString: selectedRange
         ? formatTimeRange(selectedRange.start, selectedRange.end)
@@ -404,6 +450,7 @@ export default function VideoPage() {
 
     const replyData = {
       videoId: video._id,
+      videoIndex: currentVideoIndex,
       text: replyText,
       parentCommentId,
     };
@@ -818,47 +865,60 @@ export default function VideoPage() {
           <div className="flex-1">
             {/* Video embed */}
             <div className="bg-white rounded-lg shadow-lg p-4 mb-6">
-              {video.videoSource === 'youtube' && (
-                <div
-                  ref={youtubePlayerCallback}
-                  className="rounded"
-                />
-              )}
+              {(() => {
+                const currentVideo = getCurrentVideo();
+                if (!currentVideo) return <div>No video available</div>;
 
-              {video.videoSource === 'upload' && video.uploadedVideoUrl && (
-                <div className="relative rounded overflow-hidden bg-black flex items-center justify-center" style={{ height: '480px' }}>
-                  <video
-                    ref={videoRef}
-                    src={video.uploadedVideoUrl}
-                    className="max-h-full max-w-full"
-                    style={{ objectFit: 'contain' }}
-                    onClick={togglePlayPause}
-                  />
-                  <div
-                    className="absolute inset-0 flex items-center justify-center pointer-events-none"
-                    style={{ opacity: isPlaying ? 0 : 1, transition: 'opacity 0.3s' }}
-                  >
-                    <div className="w-20 h-20 bg-black/50 rounded-full flex items-center justify-center">
-                      <svg className="w-10 h-10 text-white ml-1" fill="currentColor" viewBox="0 0 24 24">
-                        <path d="M8 5v14l11-7z" />
-                      </svg>
+                if (currentVideo.videoSource === 'youtube' && currentVideo.videoId) {
+                  return (
+                    <div
+                      ref={youtubePlayerCallback}
+                      className="rounded"
+                    />
+                  );
+                }
+
+                if (currentVideo.videoSource === 'upload' && currentVideo.uploadedVideoUrl) {
+                  return (
+                    <div className="relative rounded overflow-hidden bg-black flex items-center justify-center" style={{ height: '480px' }}>
+                      <video
+                        ref={videoRef}
+                        src={currentVideo.uploadedVideoUrl}
+                        className="max-h-full max-w-full"
+                        style={{ objectFit: 'contain' }}
+                        onClick={togglePlayPause}
+                      />
+                      <div
+                        className="absolute inset-0 flex items-center justify-center pointer-events-none"
+                        style={{ opacity: isPlaying ? 0 : 1, transition: 'opacity 0.3s' }}
+                      >
+                        <div className="w-20 h-20 bg-black/50 rounded-full flex items-center justify-center">
+                          <svg className="w-10 h-10 text-white ml-1" fill="currentColor" viewBox="0 0 24 24">
+                            <path d="M8 5v14l11-7z" />
+                          </svg>
+                        </div>
+                      </div>
                     </div>
-                  </div>
-                </div>
-              )}
+                  );
+                }
 
-              {video.videoSource === 'gdrive' && video.gdriveId && (
-                <div className="rounded overflow-hidden bg-black" style={{ height: '480px' }}>
-                  <iframe
-                    src={`https://drive.google.com/file/d/${video.gdriveId}/preview`}
-                    width="100%"
-                    height="480"
-                    allow="autoplay"
-                    className="rounded"
-                    title="Google Drive Video"
-                  />
-                </div>
-              )}
+                if (currentVideo.videoSource === 'gdrive' && currentVideo.gdriveId) {
+                  return (
+                    <div className="rounded overflow-hidden bg-black" style={{ height: '480px' }}>
+                      <iframe
+                        src={`https://drive.google.com/file/d/${currentVideo.gdriveId}/preview`}
+                        width="100%"
+                        height="480"
+                        allow="autoplay"
+                        className="rounded"
+                        title="Google Drive Video"
+                      />
+                    </div>
+                  );
+                }
+
+                return <div>Unsupported video format</div>;
+              })()}
 
               {/* Custom Timeline */}
               <div className="mt-4">

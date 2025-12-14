@@ -3,11 +3,14 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 
+interface VideoInput {
+  id: number;
+  url: string;
+}
+
 export default function NewVideoPage() {
   const [title, setTitle] = useState('');
-  const [videoSource, setVideoSource] = useState<'youtube' | 'upload' | 'gdrive' | null>(null);
-  const [youtubeUrl, setYoutubeUrl] = useState('');
-  const [gdriveUrl, setGdriveUrl] = useState('');
+  const [videoInputs, setVideoInputs] = useState<VideoInput[]>([{ id: 0, url: '' }]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const router = useRouter();
@@ -37,56 +40,45 @@ export default function NewVideoPage() {
     return null;
   };
 
-  const handleYouTubeSubmit = async () => {
+  const addVideoInput = () => {
+    setVideoInputs(prev => [
+      ...prev,
+      { id: Date.now(), url: '' }
+    ]);
+  };
+
+  const removeVideoInput = (id: number) => {
+    setVideoInputs(prev => prev.filter(input => input.id !== id));
+  };
+
+  const updateVideoUrl = (id: number, url: string) => {
+    setVideoInputs(prev => prev.map(input =>
+      input.id === id ? { ...input, url } : input
+    ));
+  };
+
+  const handleCreateVideo = async () => {
     if (!title.trim()) {
-      setError('Please enter a video title');
+      setError('Please enter a project name');
       return;
     }
 
-    const videoId = extractYouTubeId(youtubeUrl);
-    if (!videoId) {
-      setError('Invalid YouTube URL');
-      return;
-    }
-
-    setLoading(true);
-    setError('');
-
-    try {
-      const res = await fetch('/api/videos', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          title,
-          videoSource: 'youtube',
+    const validVideos = videoInputs
+      .filter(input => input.url.trim())
+      .map((input, index) => {
+        const videoId = extractYouTubeId(input.url);
+        if (!videoId) return null;
+        return {
+          videoSource: 'youtube' as const,
           videoId,
           thumbnail: `https://img.youtube.com/vi/${videoId}/mqdefault.jpg`,
-        }),
-      });
+          order: index
+        };
+      })
+      .filter(v => v !== null);
 
-      const data = await res.json();
-
-      if (!res.ok) {
-        throw new Error(data.error || 'Failed to create video');
-      }
-
-      router.push(`/video/${data.video._id}`);
-    } catch (err: any) {
-      setError(err.message);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleGoogleDriveSubmit = async () => {
-    if (!title.trim()) {
-      setError('Please enter a video title');
-      return;
-    }
-
-    const gdriveId = extractGoogleDriveId(gdriveUrl);
-    if (!gdriveId) {
-      setError('Invalid Google Drive URL');
+    if (validVideos.length === 0) {
+      setError('Please add at least one valid YouTube URL');
       return;
     }
 
@@ -99,8 +91,11 @@ export default function NewVideoPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           title,
-          videoSource: 'gdrive',
-          gdriveId,
+          videos: validVideos,
+          // Backward compatibility
+          videoSource: 'youtube',
+          videoId: validVideos[0].videoId,
+          thumbnail: validVideos[0].thumbnail,
         }),
       });
 
@@ -116,22 +111,6 @@ export default function NewVideoPage() {
     } finally {
       setLoading(false);
     }
-  };
-
-  const handleVideoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (!title.trim()) {
-      setError('Please enter a video title first');
-      e.target.value = '';
-      return;
-    }
-
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    // Note: For uploaded videos, we'll need to implement file upload to cloud storage
-    // For now, we'll show an error
-    setError('File upload feature requires cloud storage setup (AWS S3, Cloudflare R2, etc.)');
-    e.target.value = '';
   };
 
   return (
@@ -158,10 +137,10 @@ export default function NewVideoPage() {
             </div>
           )}
 
-          {/* Title Input */}
+          {/* Project Name */}
           <div className="mb-6">
             <label className="block text-sm font-medium text-gray-700 mb-2">
-              Video Title *
+              Project Name
             </label>
             <input
               type="text"
@@ -172,93 +151,57 @@ export default function NewVideoPage() {
             />
           </div>
 
-          {/* Video Source Selection */}
-          <div>
-            <h2 className="text-lg font-semibold mb-4 text-gray-800">Choose Video Source</h2>
+          {/* Video List */}
+          <div className="mb-6">
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Video List
+            </label>
 
-            {/* YouTube URL Input */}
-            <div className="mb-4">
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                YouTube URL
-              </label>
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  value={youtubeUrl}
-                  onChange={(e) => setYoutubeUrl(e.target.value)}
-                  onKeyPress={(e) => e.key === 'Enter' && handleYouTubeSubmit()}
-                  placeholder="https://www.youtube.com/watch?v=..."
-                  className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-800 text-sm"
-                />
-                <button
-                  onClick={handleYouTubeSubmit}
-                  disabled={loading}
-                  className="px-4 py-2 text-white rounded-lg transition-colors font-medium text-sm"
-                  style={{ backgroundColor: '#00875F' }}
-                  onMouseEnter={(e) => !loading && (e.currentTarget.style.backgroundColor = '#006644')}
-                  onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = '#00875F')}
-                >
-                  {loading ? 'Creating...' : 'Create'}
-                </button>
+            {videoInputs.map((input, index) => (
+              <div key={input.id} className="mb-3">
+                <div className="flex items-center gap-2">
+                  <div className="flex-1">
+                    <label className="block text-xs text-gray-600 mb-1">
+                      YouTube URL
+                      {index > 0 && (
+                        <button
+                          onClick={() => removeVideoInput(input.id)}
+                          className="ml-2 text-red-500 hover:text-red-700 text-xs"
+                        >
+                          Remove
+                        </button>
+                      )}
+                    </label>
+                    <input
+                      type="text"
+                      value={input.url}
+                      onChange={(e) => updateVideoUrl(input.id, e.target.value)}
+                      placeholder="https://www.youtube.com/watch?v=..."
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-800"
+                    />
+                  </div>
+                </div>
               </div>
-            </div>
+            ))}
 
-            {/* Commented out for now - Google Drive and File Upload */}
-            {/* <div className="flex items-center gap-3 mb-4">
-              <div className="flex-1 h-px bg-gray-300"></div>
-              <span className="text-gray-500 text-xs">OR</span>
-              <div className="flex-1 h-px bg-gray-300"></div>
-            </div> */}
-
-            {/* Google Drive URL Input */}
-            {/* <div className="mb-4">
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Google Drive URL
-              </label>
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  value={gdriveUrl}
-                  onChange={(e) => setGdriveUrl(e.target.value)}
-                  onKeyPress={(e) => e.key === 'Enter' && handleGoogleDriveSubmit()}
-                  placeholder="https://drive.google.com/file/d/..."
-                  className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-800 text-sm"
-                />
-                <button
-                  onClick={handleGoogleDriveSubmit}
-                  disabled={loading}
-                  className="px-4 py-2 text-white rounded-lg transition-colors font-medium text-sm"
-                  style={{ backgroundColor: '#00875F' }}
-                  onMouseEnter={(e) => !loading && (e.currentTarget.style.backgroundColor = '#006644')}
-                  onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = '#00875F')}
-                >
-                  {loading ? 'Creating...' : 'Create'}
-                </button>
-              </div>
-            </div> */}
-
-            {/* <div className="flex items-center gap-3 mb-4">
-              <div className="flex-1 h-px bg-gray-300"></div>
-              <span className="text-gray-500 text-xs">OR</span>
-              <div className="flex-1 h-px bg-gray-300"></div>
-            </div> */}
-
-            {/* Video Upload */}
-            {/* <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Upload Video File
-              </label>
-              <input
-                type="file"
-                accept="video/*"
-                onChange={handleVideoUpload}
-                className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-3 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 cursor-pointer"
-              />
-              <p className="mt-2 text-xs text-gray-500">
-                Note: File uploads require cloud storage configuration
-              </p>
-            </div> */}
+            {/* Add Another Button */}
+            <button
+              onClick={addVideoInput}
+              className="w-full mt-4 py-3 border-2 border-dashed border-gray-300 rounded-lg text-gray-500 hover:border-gray-400 hover:text-gray-600 transition-colors"
+            >
+              <span className="text-lg mr-2">+</span>
+              Add another video to the reel
+            </button>
           </div>
+
+          {/* Create Button */}
+          <button
+            onClick={handleCreateVideo}
+            disabled={loading}
+            className="w-full px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors font-medium text-lg disabled:bg-gray-400 disabled:cursor-not-allowed"
+          >
+            {loading ? 'Creating...' : 'Create'}
+          </button>
         </div>
       </div>
     </div>
