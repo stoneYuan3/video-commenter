@@ -20,8 +20,11 @@ async function connectDB() {
 async function migrateVideos() {
   console.log('Starting video migration...');
 
-  // Dynamically import the Video model
-  const Video = (await import('./src/models/Video.ts')).default;
+  // Import models to register them with mongoose
+  await import('./src/models/Video.ts');
+
+  // Get the model from mongoose registry
+  const Video = mongoose.model('Video');
 
   // Find all videos with old structure (has videoSource but no videos array or empty videos array)
   const oldVideos = await Video.find({
@@ -77,8 +80,11 @@ async function migrateVideos() {
 async function migrateComments() {
   console.log('\nStarting comment migration...');
 
-  // Dynamically import the Comment model
-  const Comment = (await import('./src/models/Comment.ts')).default;
+  // Import models to register them with mongoose
+  await import('./src/models/Comment.ts');
+
+  // Get the model from mongoose registry
+  const Comment = mongoose.model('Comment');
 
   // Set videoIndex: 0 for all existing comments without it
   const result = await Comment.updateMany(
