@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
+import { VideoPlayer } from '@/components/VideoPlayer';
 
 interface Comment {
   _id: string;
@@ -864,179 +865,171 @@ export default function VideoPage() {
           {/* Main content */}
           <div className="flex-1">
             {/* Video embed */}
-            <div className="bg-white rounded-lg shadow-lg p-4 mb-6">
-              {(() => {
-                const currentVideo = getCurrentVideo();
-                if (!currentVideo) return <div>No video available</div>;
+            <div className='flex flex-col gap-[32px]'>
+              <div className="bg-white rounded-lg shadow-lg p-4 mb-6">
+                {(() => {
 
-                if (currentVideo.videoSource === 'youtube' && currentVideo.videoId) {
+                  const currentVideo = getCurrentVideo();
+                  console.log(video.videos)
+                  if (!currentVideo) return <div>No video available</div>;
+                  console.log(currentVideo)
+
                   return (
-                    <div
-                      ref={youtubePlayerCallback}
-                      className="rounded"
-                    />
+                    <div className='relative'>
+                    <div className='z-[9999] relative'>
+                      <VideoPlayer
+                        videoSource={currentVideo.videoSource}
+                        videoId={currentVideo.videoId}
+                        uploadedVideoUrl={currentVideo.uploadedVideoUrl}
+                        gdriveId={currentVideo.gdriveId}
+                        youtubePlayerCallback={youtubePlayerCallback}
+                        videoRef={videoRef}
+                        isPlaying={isPlaying}
+                        togglePlayPause={togglePlayPause}
+                      />                      
+                    </div>
+
+                    <div className='absolute w-full h-full bg-black right-[-10px] top-0'>
+                      {/* Remaining video thumbnails */}
+                      {video.videos && video.videos.length > 1 && video.videos.map((videoItem, index) => {
+                        if (index === currentVideoIndex) return null;
+                        return (
+                          <div key={index} className={`absolute w-full h-full bg-white rounded-lg shadow-lg right-[-${(index+1)*10}px] z-[${(index+1)*10}]`}>
+                            {videoItem.thumbnail && (
+                              <img
+                                src={videoItem.thumbnail}
+                                alt={`Video ${index + 1}`}
+                                className="w-full h-full rounded"
+                              />
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    </div>
+
                   );
-                }
+                })()}
 
-                if (currentVideo.videoSource === 'upload' && currentVideo.uploadedVideoUrl) {
-                  return (
-                    <div className="relative rounded overflow-hidden bg-black flex items-center justify-center" style={{ height: '480px' }}>
-                      <video
-                        ref={videoRef}
-                        src={currentVideo.uploadedVideoUrl}
-                        className="max-h-full max-w-full"
-                        style={{ objectFit: 'contain' }}
-                        onClick={togglePlayPause}
-                      />
+                {/* Custom Timeline */}
+                <div className="mt-4">
+                  {hoveredComment && (
+                    <div className="relative mb-2">
                       <div
-                        className="absolute inset-0 flex items-center justify-center pointer-events-none"
-                        style={{ opacity: isPlaying ? 0 : 1, transition: 'opacity 0.3s' }}
+                        className="absolute bottom-0 px-3 py-2 rounded-lg shadow-lg text-sm max-w-xs z-50 animate-fade-in"
+                        style={{
+                          backgroundColor: hoveredComment.color,
+                          color: 'white',
+                          left: hoveredComment.timeRange
+                            ? `${((hoveredComment.timeRange.start / duration) * 100)}%`
+                            : `${((hoveredComment.timestamp ?? 0) / duration) * 100}%`,
+                          transform: 'translateX(-50%)'
+                        }}
                       >
-                        <div className="w-20 h-20 bg-black/50 rounded-full flex items-center justify-center">
-                          <svg className="w-10 h-10 text-white ml-1" fill="currentColor" viewBox="0 0 24 24">
-                            <path d="M8 5v14l11-7z" />
-                          </svg>
-                        </div>
+                        <div className="font-semibold mb-1">{hoveredComment.timeString}</div>
+                        <div className="text-white/90">{hoveredComment.text}</div>
+                        <div
+                          className="absolute top-full left-1/2 -translate-x-1/2 w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent"
+                          style={{ borderTopColor: hoveredComment.color }}
+                        />
                       </div>
                     </div>
-                  );
-                }
+                  )}
 
-                if (currentVideo.videoSource === 'gdrive' && currentVideo.gdriveId) {
-                  return (
-                    <div className="rounded overflow-hidden bg-black" style={{ height: '480px' }}>
-                      <iframe
-                        src={`https://drive.google.com/file/d/${currentVideo.gdriveId}/preview`}
-                        width="100%"
-                        height="480"
-                        allow="autoplay"
-                        className="rounded"
-                        title="Google Drive Video"
-                      />
-                    </div>
-                  );
-                }
-
-                return <div>Unsupported video format</div>;
-              })()}
-
-              {/* Custom Timeline */}
-              <div className="mt-4">
-                {hoveredComment && (
-                  <div className="relative mb-2">
-                    <div
-                      className="absolute bottom-0 px-3 py-2 rounded-lg shadow-lg text-sm max-w-xs z-50 animate-fade-in"
-                      style={{
-                        backgroundColor: hoveredComment.color,
-                        color: 'white',
-                        left: hoveredComment.timeRange
-                          ? `${((hoveredComment.timeRange.start / duration) * 100)}%`
-                          : `${((hoveredComment.timestamp ?? 0) / duration) * 100}%`,
-                        transform: 'translateX(-50%)'
-                      }}
-                    >
-                      <div className="font-semibold mb-1">{hoveredComment.timeString}</div>
-                      <div className="text-white/90">{hoveredComment.text}</div>
-                      <div
-                        className="absolute top-full left-1/2 -translate-x-1/2 w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent"
-                        style={{ borderTopColor: hoveredComment.color }}
-                      />
-                    </div>
+                  <div className='mb-1 text-sm text-gray-600'>
+                    <p>Click on the timeline to mark a timestamp, drag on the timeline to mark a time range.</p>
                   </div>
-                )}
 
-                <div className='mb-1 text-sm text-gray-600'>
-                  <p>Click on the timeline to mark a timestamp, drag on the timeline to mark a time range.</p>
-                </div>
-
-                <div
-                  ref={timelineRef}
-                  className="relative h-12 bg-gray-200 rounded-lg cursor-pointer hover:bg-gray-300 transition-colors"
-                  onClick={handleTimelineClick}
-                  onMouseDown={handleMouseDown}
-                  onMouseMove={handleMouseMove}
-                  style={{ userSelect: 'none' }}
-                >
-                  {/* Comment labels on timeline */}
-                  {comments.map(comment => {
-                    if (comment.timeRange && duration > 0) {
-                      const startPercent = (comment.timeRange.start / duration) * 100;
-                      const widthPercent = ((comment.timeRange.end - comment.timeRange.start) / duration) * 100;
-                      return (
-                        <div
-                          key={comment._id}
-                          className="absolute top-0 h-full opacity-40 pointer-events-auto border-l-2 border-r-2 hover:opacity-60 transition-opacity cursor-pointer z-10"
-                          style={{
-                            left: `${startPercent}%`,
-                            width: `${widthPercent}%`,
-                            backgroundColor: comment.color,
-                            borderColor: comment.color
-                          }}
-                          onMouseEnter={() => setHoveredComment(comment)}
-                          onMouseLeave={() => setHoveredComment(null)}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            const time = getTimeFromPosition(e.clientX);
-                            jumpToTime(time, false);
-                          }}
-                        />
-                      );
-                    } else if (comment.timestamp !== undefined && duration > 0) {
-                      const position = (comment.timestamp / duration) * 100;
-                      return (
-                        <div
-                          key={comment._id}
-                          className="absolute top-0 w-1 h-full pointer-events-auto hover:w-2 transition-all cursor-pointer z-10"
-                          style={{
-                            left: `${position}%`,
-                            backgroundColor: comment.color
-                          }}
-                          onMouseEnter={() => setHoveredComment(comment)}
-                          onMouseLeave={() => setHoveredComment(null)}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            jumpToTime(comment.timestamp ?? 0, false);
-                          }}
-                        />
-                      );
-                    }
-                    return null;
-                  })}
-
-                  {/* Progress bar */}
                   <div
-                    className="absolute top-0 left-0 h-full bg-blue-400 rounded-lg pointer-events-none z-0"
-                    style={{ width: `${duration ? (currentTime / duration) * 100 : 0}%` }}
-                  />
+                    ref={timelineRef}
+                    className="relative h-12 bg-gray-200 rounded-lg cursor-pointer hover:bg-gray-300 transition-colors"
+                    onClick={handleTimelineClick}
+                    onMouseDown={handleMouseDown}
+                    onMouseMove={handleMouseMove}
+                    style={{ userSelect: 'none' }}
+                  >
+                    {/* Comment labels on timeline */}
+                    {comments.map(comment => {
+                      if (comment.timeRange && duration > 0) {
+                        const startPercent = (comment.timeRange.start / duration) * 100;
+                        const widthPercent = ((comment.timeRange.end - comment.timeRange.start) / duration) * 100;
+                        return (
+                          <div
+                            key={comment._id}
+                            className="absolute top-0 h-full opacity-40 pointer-events-auto border-l-2 border-r-2 hover:opacity-60 transition-opacity cursor-pointer z-10"
+                            style={{
+                              left: `${startPercent}%`,
+                              width: `${widthPercent}%`,
+                              backgroundColor: comment.color,
+                              borderColor: comment.color
+                            }}
+                            onMouseEnter={() => setHoveredComment(comment)}
+                            onMouseLeave={() => setHoveredComment(null)}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              const time = getTimeFromPosition(e.clientX);
+                              jumpToTime(time, false);
+                            }}
+                          />
+                        );
+                      } else if (comment.timestamp !== undefined && duration > 0) {
+                        const position = (comment.timestamp / duration) * 100;
+                        return (
+                          <div
+                            key={comment._id}
+                            className="absolute top-0 w-1 h-full pointer-events-auto hover:w-2 transition-all cursor-pointer z-10"
+                            style={{
+                              left: `${position}%`,
+                              backgroundColor: comment.color
+                            }}
+                            onMouseEnter={() => setHoveredComment(comment)}
+                            onMouseLeave={() => setHoveredComment(null)}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              jumpToTime(comment.timestamp ?? 0, false);
+                            }}
+                          />
+                        );
+                      }
+                      return null;
+                    })}
 
-                  {/* Selected range highlight */}
-                  {selectedRange && (
+                    {/* Progress bar */}
                     <div
-                      className="absolute top-0 h-full bg-yellow-400 opacity-60 pointer-events-none border-2 border-yellow-600 z-20"
-                      style={getSelectionStyle()}
+                      className="absolute top-0 left-0 h-full bg-blue-400 rounded-lg pointer-events-none z-0"
+                      style={{ width: `${duration ? (currentTime / duration) * 100 : 0}%` }}
                     />
-                  )}
 
-                  {/* Current time indicator */}
-                  <div
-                    className="absolute top-0 w-1 h-full bg-red-500 pointer-events-none z-30"
-                    style={{ left: `${duration ? (currentTime / duration) * 100 : 0}%` }}
-                  />
+                    {/* Selected range highlight */}
+                    {selectedRange && (
+                      <div
+                        className="absolute top-0 h-full bg-yellow-400 opacity-60 pointer-events-none border-2 border-yellow-600 z-20"
+                        style={getSelectionStyle()}
+                      />
+                    )}
 
-                  {/* Time display on timeline */}
-                  <div className="absolute inset-0 flex items-center justify-between px-4 pointer-events-none">
-                    <span className="text-sm font-mono text-gray-700">{formatTime(currentTime)}</span>
-                    <span className="text-sm font-mono text-gray-700">{formatTime(duration)}</span>
-                  </div>
-                </div>
+                    {/* Current time indicator */}
+                    <div
+                      className="absolute top-0 w-1 h-full bg-red-500 pointer-events-none z-30"
+                      style={{ left: `${duration ? (currentTime / duration) * 100 : 0}%` }}
+                    />
 
-                {/* Playback controls */}
-                <div className="flex items-center gap-4 mt-3">
-                  {selectedRange && (
-                    <div className="text-sm text-gray-600">
-                      Selected: {formatTimeRange(selectedRange.start, selectedRange.end)}
+                    {/* Time display on timeline */}
+                    <div className="absolute inset-0 flex items-center justify-between px-4 pointer-events-none">
+                      <span className="text-sm font-mono text-gray-700">{formatTime(currentTime)}</span>
+                      <span className="text-sm font-mono text-gray-700">{formatTime(duration)}</span>
                     </div>
-                  )}
+                  </div>
+
+                  {/* Playback controls */}
+                  <div className="flex items-center gap-4 mt-3">
+                    {selectedRange && (
+                      <div className="text-sm text-gray-600">
+                        Selected: {formatTimeRange(selectedRange.start, selectedRange.end)}
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
             </div>
