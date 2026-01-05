@@ -832,8 +832,8 @@ export default function VideoPage() {
 
   return (
     <div className="min-h-screen bg-gray-50 p-8">
-      <div className="max-w-7xl mx-auto">
-        <div className="flex justify-between items-center mb-4">
+      <div className="max-w-[1440px] p-[64px] mx-auto">
+        <div className="flex justify-between items-center mb-[25px]">
           <div className="flex flex-col gap-2">
             <div className="flex items-center gap-4">
               <h1 className="text-3xl font-bold text-gray-800">{video.title}</h1>
@@ -860,487 +860,494 @@ export default function VideoPage() {
             Back to Dashboard
           </button>
         </div>
+        
+        <div className="flex flex-col gap-[25px]">
 
-        <div className="flex gap-6">
-          {/* Main content */}
-          <div className="flex-1">
-            {/* Video embed */}
-            <div className='flex flex-col gap-[32px]'>
-              <div className="bg-white rounded-lg shadow-lg p-4 mb-6">
-                {(() => {
+          <div className='flex gap-[20px] w-full h-full bg-[#E8E8E8] px-[35px] py-[15px]'>
+            {/* Remaining video thumbnails */}
+            {video.videos && video.videos.length > 1 && video.videos.map((videoItem, index) => {
+              if (index === currentVideoIndex) return null;
+              return (
+                <div key={index} className={`w-[125px] h-[70px] bg-white rounded-lg shadow-lg`}>
+                  {videoItem.thumbnail && (
+                    <img
+                      src={videoItem.thumbnail}
+                      alt={`Video ${index + 1}`}
+                      className="w-full h-full rounded"
+                    />
+                  )}
+                </div>
+              );
+            })}
+          </div>
 
-                  const currentVideo = getCurrentVideo();
-                  console.log(video.videos)
-                  if (!currentVideo) return <div>No video available</div>;
-                  console.log(currentVideo)
+          <div className="flex gap-6">
 
-                  return (
-                    <div className='relative'>
-                    <div className='z-[9999] relative'>
-                      <VideoPlayer
-                        videoSource={currentVideo.videoSource}
-                        videoId={currentVideo.videoId}
-                        uploadedVideoUrl={currentVideo.uploadedVideoUrl}
-                        gdriveId={currentVideo.gdriveId}
-                        youtubePlayerCallback={youtubePlayerCallback}
-                        videoRef={videoRef}
-                        isPlaying={isPlaying}
-                        togglePlayPause={togglePlayPause}
-                      />                      
+            {/* Main content */}
+            <div className="flex-1">
+              {/* Video embed */}
+              <div className='flex flex-col gap-[32px]'>
+                <div className="mb-6 w-full max-w-[1180px]">
+                  {(() => {
+
+                    const currentVideo = getCurrentVideo();
+                    console.log(video.videos)
+                    if (!currentVideo) return <div>No video available</div>;
+                    console.log(currentVideo)
+
+                    return (
+                      <div className='relative'>
+                      <div className='z-[9999] relative'>
+                        <VideoPlayer
+                          videoSource={currentVideo.videoSource}
+                          videoId={currentVideo.videoId}
+                          uploadedVideoUrl={currentVideo.uploadedVideoUrl}
+                          gdriveId={currentVideo.gdriveId}
+                          youtubePlayerCallback={youtubePlayerCallback}
+                          videoRef={videoRef}
+                          isPlaying={isPlaying}
+                          togglePlayPause={togglePlayPause}
+                        />                      
+                      </div>
+
+                      </div>
+
+                    );
+                  })()}
+
+                  {/* Custom Timeline */}
+                  <div className="mt-4">
+                    {hoveredComment && (
+                      <div className="relative mb-2">
+                        <div
+                          className="absolute bottom-0 px-3 py-2 rounded-lg shadow-lg text-sm max-w-xs z-50 animate-fade-in"
+                          style={{
+                            backgroundColor: hoveredComment.color,
+                            color: 'white',
+                            left: hoveredComment.timeRange
+                              ? `${((hoveredComment.timeRange.start / duration) * 100)}%`
+                              : `${((hoveredComment.timestamp ?? 0) / duration) * 100}%`,
+                            transform: 'translateX(-50%)'
+                          }}
+                        >
+                          <div className="font-semibold mb-1">{hoveredComment.timeString}</div>
+                          <div className="text-white/90">{hoveredComment.text}</div>
+                          <div
+                            className="absolute top-full left-1/2 -translate-x-1/2 w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent"
+                            style={{ borderTopColor: hoveredComment.color }}
+                          />
+                        </div>
+                      </div>
+                    )}
+
+                    <div className='mb-1 text-sm text-gray-600'>
+                      <p>Click on the timeline to mark a timestamp, drag on the timeline to mark a time range.</p>
                     </div>
 
-                    <div className='absolute w-full h-full bg-black right-[-10px] top-0'>
-                      {/* Remaining video thumbnails */}
-                      {video.videos && video.videos.length > 1 && video.videos.map((videoItem, index) => {
-                        if (index === currentVideoIndex) return null;
+                    <div
+                      ref={timelineRef}
+                      className="relative h-12 bg-gray-200 rounded-lg cursor-pointer hover:bg-gray-300 transition-colors"
+                      onClick={handleTimelineClick}
+                      onMouseDown={handleMouseDown}
+                      onMouseMove={handleMouseMove}
+                      style={{ userSelect: 'none' }}
+                    >
+                      {/* Comment labels on timeline */}
+                      {comments.map(comment => {
+                        if (comment.timeRange && duration > 0) {
+                          const startPercent = (comment.timeRange.start / duration) * 100;
+                          const widthPercent = ((comment.timeRange.end - comment.timeRange.start) / duration) * 100;
+                          return (
+                            <div
+                              key={comment._id}
+                              className="absolute top-0 h-full opacity-40 pointer-events-auto border-l-2 border-r-2 hover:opacity-60 transition-opacity cursor-pointer z-10"
+                              style={{
+                                left: `${startPercent}%`,
+                                width: `${widthPercent}%`,
+                                backgroundColor: comment.color,
+                                borderColor: comment.color
+                              }}
+                              onMouseEnter={() => setHoveredComment(comment)}
+                              onMouseLeave={() => setHoveredComment(null)}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                const time = getTimeFromPosition(e.clientX);
+                                jumpToTime(time, false);
+                              }}
+                            />
+                          );
+                        } else if (comment.timestamp !== undefined && duration > 0) {
+                          const position = (comment.timestamp / duration) * 100;
+                          return (
+                            <div
+                              key={comment._id}
+                              className="absolute top-0 w-1 h-full pointer-events-auto hover:w-2 transition-all cursor-pointer z-10"
+                              style={{
+                                left: `${position}%`,
+                                backgroundColor: comment.color
+                              }}
+                              onMouseEnter={() => setHoveredComment(comment)}
+                              onMouseLeave={() => setHoveredComment(null)}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                jumpToTime(comment.timestamp ?? 0, false);
+                              }}
+                            />
+                          );
+                        }
+                        return null;
+                      })}
+
+                      {/* Progress bar */}
+                      <div
+                        className="absolute top-0 left-0 h-full bg-blue-400 rounded-lg pointer-events-none z-0"
+                        style={{ width: `${duration ? (currentTime / duration) * 100 : 0}%` }}
+                      />
+
+                      {/* Selected range highlight */}
+                      {selectedRange && (
+                        <div
+                          className="absolute top-0 h-full bg-yellow-400 opacity-60 pointer-events-none border-2 border-yellow-600 z-20"
+                          style={getSelectionStyle()}
+                        />
+                      )}
+
+                      {/* Current time indicator */}
+                      <div
+                        className="absolute top-0 w-1 h-full bg-red-500 pointer-events-none z-30"
+                        style={{ left: `${duration ? (currentTime / duration) * 100 : 0}%` }}
+                      />
+
+                      {/* Time display on timeline */}
+                      <div className="absolute inset-0 flex items-center justify-between px-4 pointer-events-none">
+                        <span className="text-sm font-mono text-gray-700">{formatTime(currentTime)}</span>
+                        <span className="text-sm font-mono text-gray-700">{formatTime(duration)}</span>
+                      </div>
+                    </div>
+
+                    {/* Playback controls */}
+                    <div className="flex items-center gap-4 mt-3">
+                      {selectedRange && (
+                        <div className="text-sm text-gray-600">
+                          Selected: {formatTimeRange(selectedRange.start, selectedRange.end)}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+            </div>
+
+            {/* Sidebar */}
+            <div className="w-96">
+            {/* <div className="w-full max-w-[400px]"> */}
+              {/* Timestamp Comments Section - Same height as video section */}
+              <div
+                className="bg-white rounded-lg shadow-lg p-6 flex flex-col"
+                style={{ height: 'fit-content' }}
+              >
+                <h2 className="text-xl font-semibold mb-4 text-gray-800">Timestamp Comments</h2>
+
+                {/* Comments List with Scroll */}
+                <div
+                  ref={commentsContainerRef}
+                  className="flex-1 overflow-y-auto mb-4 pr-2"
+                  style={{
+                    maxHeight: 'calc(100vh - 400px)',
+                    minHeight: '400px'
+                  }}
+                >
+                  {comments.length === 0 ? (
+                    <p className="text-gray-500 italic">No comments yet. Add one below!</p>
+                  ) : (
+                    <div className="space-y-3">
+                      {comments.map(comment => {
+                        const isActive = displayedComments.some(dc => dc._id === comment._id);
+                        const isEditing = editingCommentId === comment._id;
+
                         return (
-                          <div key={index} className={`absolute w-full h-full bg-white rounded-lg shadow-lg right-[-${(index+1)*10}px] z-[${(index+1)*10}]`}>
-                            {videoItem.thumbnail && (
-                              <img
-                                src={videoItem.thumbnail}
-                                alt={`Video ${index + 1}`}
-                                className="w-full h-full rounded"
-                              />
+                          <div
+                            key={comment._id}
+                            ref={(el) => {
+                              if (el) commentRefs.current.set(comment._id, el);
+                              else commentRefs.current.delete(comment._id);
+                            }}
+                            className={`border-l-[5px] p-3 transition-all duration-200 cursor-pointer ${
+                              isActive ? 'shadow-md bg-[#fef3c7]' : 'bg-[#ffffff]'
+                            } hover:shadow-lg hover:bg-[#fef3c7]`}
+                            style={{
+                              borderLeftColor: comment.color,
+                            }}
+                            onClick={(e) => {
+                              // Don't trigger if clicking on buttons
+                              if ((e.target as HTMLElement).tagName === 'BUTTON') return;
+
+                              // Jump to the comment's timestamp/time range start
+                              const targetTime = comment.timestamp ?? comment.timeRange?.start ?? 0;
+                              jumpToTime(targetTime, false);
+
+                              // Scroll to this comment
+                              const commentElement = commentRefs.current.get(comment._id);
+                              if (commentElement) {
+                                commentElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                              }
+                            }}
+                          >
+                            {isEditing ? (
+                              <div>
+                                <input
+                                  type="text"
+                                  value={editText}
+                                  onChange={(e) => setEditText(e.target.value)}
+                                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-800 mb-2 text-sm"
+                                />
+                                <div className="flex gap-2">
+                                  <button
+                                    onClick={() => saveEdit(comment._id)}
+                                    className="px-2 py-1 text-white rounded text-xs"
+                                    style={{ backgroundColor: '#00875F' }}
+                                  >
+                                    Save
+                                  </button>
+                                  <button
+                                    onClick={cancelEdit}
+                                    className="px-2 py-1 bg-gray-200 text-gray-700 rounded text-xs"
+                                  >
+                                    Cancel
+                                  </button>
+                                </div>
+                              </div>
+                            ) : (
+                              <div>
+                                <div className="flex items-start justify-between mb-2">
+                                  <button
+                                    onClick={() => jumpToTime(comment.timestamp ?? comment.timeRange?.start ?? 0, false)}
+                                    className={`font-mono text-xs font-semibold hover:underline flex items-center gap-1 ${
+                                      isActive ? 'text-blue-600' : 'text-gray-600'
+                                    }`}
+                                  >
+                                    {comment.timeRange && (
+                                      <span className={`px-1.5 py-0.5 rounded text-xs ${
+                                        isActive ? 'bg-yellow-200 text-yellow-800' : 'bg-gray-300 text-gray-700'
+                                      }`}>
+                                        RANGE
+                                      </span>
+                                    )}
+                                    {comment.timeString}
+                                  </button>
+                                  <div className="flex gap-1">
+                                    {currentUserId && (
+                                      <button
+                                        onClick={() => startReply(comment._id)}
+                                        className={`text-xs ${
+                                          isActive ? 'text-green-600 hover:text-green-700' : 'text-gray-500 hover:text-gray-700'
+                                        }`}
+                                      >
+                                        Reply
+                                      </button>
+                                    )}
+                                    {comment.userId._id === currentUserId && (
+                                      <>
+                                        <button
+                                          onClick={() => startEdit(comment)}
+                                          className={`text-xs ${
+                                            isActive ? 'text-blue-600 hover:text-blue-700' : 'text-gray-500 hover:text-gray-700'
+                                          }`}
+                                        >
+                                          Edit
+                                        </button>
+                                        <button
+                                          onClick={() => deleteComment(comment._id)}
+                                          className="text-xs text-red-600 hover:text-red-700"
+                                        >
+                                          Delete
+                                        </button>
+                                      </>
+                                    )}
+                                  </div>
+                                </div>
+                                <p className={`text-sm mb-1 ${
+                                  isActive ? 'text-gray-900 font-medium' : 'text-gray-600'
+                                }`}>{comment.text}</p>
+                                <p className={`text-xs ${
+                                  isActive ? 'text-gray-600' : 'text-gray-500'
+                                }`}>
+                                  By {comment.userId.name} • {new Date(comment.createdAt).toLocaleDateString()}
+                                </p>
+                              </div>
+                            )}
+
+                            {/* Reply input form */}
+                            {replyingToCommentId === comment._id && (
+                              <div className="mt-3 p-3 bg-gray-50 rounded-lg border">
+                                <div className="flex gap-2 mb-2">
+                                  <input
+                                    type="text"
+                                    value={replyText}
+                                    onChange={(e) => setReplyText(e.target.value)}
+                                    onKeyPress={(e) => e.key === 'Enter' && addReply(comment._id)}
+                                    placeholder="Write a reply..."
+                                    className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-800 text-sm"
+                                  />
+                                  <button
+                                    onClick={() => addReply(comment._id)}
+                                    className="px-3 py-2 text-white rounded-lg transition-colors font-medium text-sm"
+                                    style={{ backgroundColor: '#00875F' }}
+                                  >
+                                    Reply
+                                  </button>
+                                  <button
+                                    onClick={cancelReply}
+                                    className="px-3 py-2 bg-gray-200 text-gray-700 rounded-lg text-sm"
+                                  >
+                                    Cancel
+                                  </button>
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Display replies */}
+                            {comment.replies && comment.replies.length > 0 && (
+                              <div className="mt-3 ml-4 space-y-2">
+                                {comment.replies.map((reply) => (
+                                  <div
+                                    key={reply._id}
+                                    className="p-3 bg-gray-50 rounded-lg border-l-2"
+                                    style={{ borderLeftColor: comment.color }}
+                                  >
+                                    <div className="flex items-start justify-between mb-2">
+                                      <p className="text-sm text-gray-600">
+                                        <span className="font-medium">{reply.userId.name}</span>
+                                      </p>
+                                      {reply.userId._id === currentUserId && (
+                                        <button
+                                          onClick={() => deleteComment(reply._id)}
+                                          className="text-xs text-red-600 hover:text-red-700"
+                                        >
+                                          Delete
+                                        </button>
+                                      )}
+                                    </div>
+                                    <p className="text-sm text-gray-700 mb-1">{reply.text}</p>
+                                    <p className="text-xs text-gray-500">
+                                      {new Date(reply.createdAt).toLocaleDateString()}
+                                    </p>
+                                  </div>
+                                ))}
+                              </div>
                             )}
                           </div>
                         );
                       })}
                     </div>
-
-                    </div>
-
-                  );
-                })()}
-
-                {/* Custom Timeline */}
-                <div className="mt-4">
-                  {hoveredComment && (
-                    <div className="relative mb-2">
-                      <div
-                        className="absolute bottom-0 px-3 py-2 rounded-lg shadow-lg text-sm max-w-xs z-50 animate-fade-in"
-                        style={{
-                          backgroundColor: hoveredComment.color,
-                          color: 'white',
-                          left: hoveredComment.timeRange
-                            ? `${((hoveredComment.timeRange.start / duration) * 100)}%`
-                            : `${((hoveredComment.timestamp ?? 0) / duration) * 100}%`,
-                          transform: 'translateX(-50%)'
-                        }}
-                      >
-                        <div className="font-semibold mb-1">{hoveredComment.timeString}</div>
-                        <div className="text-white/90">{hoveredComment.text}</div>
-                        <div
-                          className="absolute top-full left-1/2 -translate-x-1/2 w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent"
-                          style={{ borderTopColor: hoveredComment.color }}
-                        />
-                      </div>
-                    </div>
                   )}
+                </div>
 
-                  <div className='mb-1 text-sm text-gray-600'>
-                    <p>Click on the timeline to mark a timestamp, drag on the timeline to mark a time range.</p>
-                  </div>
-
-                  <div
-                    ref={timelineRef}
-                    className="relative h-12 bg-gray-200 rounded-lg cursor-pointer hover:bg-gray-300 transition-colors"
-                    onClick={handleTimelineClick}
-                    onMouseDown={handleMouseDown}
-                    onMouseMove={handleMouseMove}
-                    style={{ userSelect: 'none' }}
-                  >
-                    {/* Comment labels on timeline */}
-                    {comments.map(comment => {
-                      if (comment.timeRange && duration > 0) {
-                        const startPercent = (comment.timeRange.start / duration) * 100;
-                        const widthPercent = ((comment.timeRange.end - comment.timeRange.start) / duration) * 100;
-                        return (
-                          <div
-                            key={comment._id}
-                            className="absolute top-0 h-full opacity-40 pointer-events-auto border-l-2 border-r-2 hover:opacity-60 transition-opacity cursor-pointer z-10"
-                            style={{
-                              left: `${startPercent}%`,
-                              width: `${widthPercent}%`,
-                              backgroundColor: comment.color,
-                              borderColor: comment.color
-                            }}
-                            onMouseEnter={() => setHoveredComment(comment)}
-                            onMouseLeave={() => setHoveredComment(null)}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              const time = getTimeFromPosition(e.clientX);
-                              jumpToTime(time, false);
-                            }}
-                          />
-                        );
-                      } else if (comment.timestamp !== undefined && duration > 0) {
-                        const position = (comment.timestamp / duration) * 100;
-                        return (
-                          <div
-                            key={comment._id}
-                            className="absolute top-0 w-1 h-full pointer-events-auto hover:w-2 transition-all cursor-pointer z-10"
-                            style={{
-                              left: `${position}%`,
-                              backgroundColor: comment.color
-                            }}
-                            onMouseEnter={() => setHoveredComment(comment)}
-                            onMouseLeave={() => setHoveredComment(null)}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              jumpToTime(comment.timestamp ?? 0, false);
-                            }}
-                          />
-                        );
-                      }
-                      return null;
-                    })}
-
-                    {/* Progress bar */}
-                    <div
-                      className="absolute top-0 left-0 h-full bg-blue-400 rounded-lg pointer-events-none z-0"
-                      style={{ width: `${duration ? (currentTime / duration) * 100 : 0}%` }}
-                    />
-
-                    {/* Selected range highlight */}
-                    {selectedRange && (
-                      <div
-                        className="absolute top-0 h-full bg-yellow-400 opacity-60 pointer-events-none border-2 border-yellow-600 z-20"
-                        style={getSelectionStyle()}
+                {/* Add Comment UI - Compact at bottom */}
+                {currentUserId ? (
+                  <div className="border-t pt-4">
+                    <div className="flex gap-2 mb-2">
+                      <input
+                        type="text"
+                        value={newComment}
+                        onChange={(e) => setNewComment(e.target.value)}
+                        onKeyPress={(e) => e.key === 'Enter' && addComment()}
+                        placeholder="Add a comment..."
+                        className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-800 text-sm"
                       />
-                    )}
-
-                    {/* Current time indicator */}
-                    <div
-                      className="absolute top-0 w-1 h-full bg-red-500 pointer-events-none z-30"
-                      style={{ left: `${duration ? (currentTime / duration) * 100 : 0}%` }}
-                    />
-
-                    {/* Time display on timeline */}
-                    <div className="absolute inset-0 flex items-center justify-between px-4 pointer-events-none">
-                      <span className="text-sm font-mono text-gray-700">{formatTime(currentTime)}</span>
-                      <span className="text-sm font-mono text-gray-700">{formatTime(duration)}</span>
+                      <button
+                        onClick={addComment}
+                        className="px-4 py-2 text-white rounded-lg transition-colors font-medium text-sm"
+                        style={{ backgroundColor: '#00875F' }}
+                        onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#006644')}
+                        onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = '#00875F')}
+                      >
+                        Add
+                      </button>
+                    </div>
+                    <div className="text-xs text-gray-600">
+                      {selectedRange
+                        ? `Range: ${formatTimeRange(selectedRange.start, selectedRange.end)}`
+                        : `At: ${formatTime(currentTime)}`
+                      }
                     </div>
                   </div>
-
-                  {/* Playback controls */}
-                  <div className="flex items-center gap-4 mt-3">
-                    {selectedRange && (
-                      <div className="text-sm text-gray-600">
-                        Selected: {formatTimeRange(selectedRange.start, selectedRange.end)}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </div>
-            </div>
-
-          </div>
-
-          {/* Sidebar */}
-          <div className="w-96">
-            {/* Timestamp Comments Section - Same height as video section */}
-            <div
-              className="bg-white rounded-lg shadow-lg p-6 flex flex-col"
-              style={{ height: 'fit-content' }}
-            >
-              <h2 className="text-xl font-semibold mb-4 text-gray-800">Timestamp Comments</h2>
-
-              {/* Comments List with Scroll */}
-              <div
-                ref={commentsContainerRef}
-                className="flex-1 overflow-y-auto mb-4 pr-2"
-                style={{
-                  maxHeight: 'calc(100vh - 400px)',
-                  minHeight: '400px'
-                }}
-              >
-                {comments.length === 0 ? (
-                  <p className="text-gray-500 italic">No comments yet. Add one below!</p>
                 ) : (
-                  <div className="space-y-3">
-                    {comments.map(comment => {
-                      const isActive = displayedComments.some(dc => dc._id === comment._id);
-                      const isEditing = editingCommentId === comment._id;
+                  <div className="border-t pt-4 text-center">
+                    <p className="text-gray-600 text-sm">
+                      <a href="/login" className="text-blue-500 hover:underline">Log in</a> or <a href="/signup" className="text-blue-500 hover:underline">Sign up</a> to add comments
+                    </p>
+                  </div>
+                )}
+              </div>
 
-                      return (
-                        <div
-                          key={comment._id}
-                          ref={(el) => {
-                            if (el) commentRefs.current.set(comment._id, el);
-                            else commentRefs.current.delete(comment._id);
-                          }}
-                          className={`border-l-[5px] p-3 transition-all duration-200 cursor-pointer ${
-                            isActive ? 'shadow-md bg-[#fef3c7]' : 'bg-[#ffffff]'
-                          } hover:shadow-lg hover:bg-[#fef3c7]`}
-                          style={{
-                            borderLeftColor: comment.color,
-                          }}
-                          onClick={(e) => {
-                            // Don't trigger if clicking on buttons
-                            if ((e.target as HTMLElement).tagName === 'BUTTON') return;
-
-                            // Jump to the comment's timestamp/time range start
-                            const targetTime = comment.timestamp ?? comment.timeRange?.start ?? 0;
-                            jumpToTime(targetTime, false);
-
-                            // Scroll to this comment
-                            const commentElement = commentRefs.current.get(comment._id);
-                            if (commentElement) {
-                              commentElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                            }
-                          }}
-                        >
-                          {isEditing ? (
-                            <div>
-                              <input
-                                type="text"
-                                value={editText}
-                                onChange={(e) => setEditText(e.target.value)}
-                                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-800 mb-2 text-sm"
-                              />
-                              <div className="flex gap-2">
-                                <button
-                                  onClick={() => saveEdit(comment._id)}
-                                  className="px-2 py-1 text-white rounded text-xs"
-                                  style={{ backgroundColor: '#00875F' }}
-                                >
-                                  Save
-                                </button>
-                                <button
-                                  onClick={cancelEdit}
-                                  className="px-2 py-1 bg-gray-200 text-gray-700 rounded text-xs"
-                                >
-                                  Cancel
-                                </button>
-                              </div>
-                            </div>
+              {/* Invited Commenters - Only show for logged-in users */}
+              {currentUserId && (
+              <div className={`bg-white rounded-lg shadow-lg p-6 mt-6 ${
+                video.permission === 'anyone-edit' ? 'opacity-50 pointer-events-none' : ''
+              }`}>
+                <div className="flex justify-between items-center mb-4">
+                  <h2 className="text-xl font-semibold text-gray-800">Invited Commenters</h2>
+                  {isOwner && video.permission !== 'anyone-edit' && (
+                    <button
+                      onClick={() => setShowInviteModal(true)}
+                      className="text-blue-500 hover:text-blue-700"
+                      title="Invite user"
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                        <path d="M8 9a3 3 0 100-6 3 3 0 000 6zM8 11a6 6 0 016 6H2a6 6 0 016-6zM16 7a1 1 0 10-2 0v1h-1a1 1 0 100 2h1v1a1 1 0 102 0v-1h1a1 1 0 100-2h-1V7z" />
+                      </svg>
+                    </button>
+                  )}
+                </div>
+                <div className="space-y-2">
+                  {video.invitedUsers && video.invitedUsers.length > 0 ? (
+                    video.invitedUsers.map((invited) => (
+                      <div key={invited.email} className="flex items-center justify-between p-2 hover:bg-gray-50 rounded">
+                        <div className="flex-1">
+                          {invited.accepted && invited.userId ? (
+                            <>
+                              <p className="text-sm font-medium text-gray-800">{invited.userId.name}</p>
+                              <p className="text-xs text-gray-500">{invited.email}</p>
+                            </>
                           ) : (
-                            <div>
-                              <div className="flex items-start justify-between mb-2">
-                                <button
-                                  onClick={() => jumpToTime(comment.timestamp ?? comment.timeRange?.start ?? 0, false)}
-                                  className={`font-mono text-xs font-semibold hover:underline flex items-center gap-1 ${
-                                    isActive ? 'text-blue-600' : 'text-gray-600'
-                                  }`}
-                                >
-                                  {comment.timeRange && (
-                                    <span className={`px-1.5 py-0.5 rounded text-xs ${
-                                      isActive ? 'bg-yellow-200 text-yellow-800' : 'bg-gray-300 text-gray-700'
-                                    }`}>
-                                      RANGE
-                                    </span>
-                                  )}
-                                  {comment.timeString}
-                                </button>
-                                <div className="flex gap-1">
-                                  {currentUserId && (
-                                    <button
-                                      onClick={() => startReply(comment._id)}
-                                      className={`text-xs ${
-                                        isActive ? 'text-green-600 hover:text-green-700' : 'text-gray-500 hover:text-gray-700'
-                                      }`}
-                                    >
-                                      Reply
-                                    </button>
-                                  )}
-                                  {comment.userId._id === currentUserId && (
-                                    <>
-                                      <button
-                                        onClick={() => startEdit(comment)}
-                                        className={`text-xs ${
-                                          isActive ? 'text-blue-600 hover:text-blue-700' : 'text-gray-500 hover:text-gray-700'
-                                        }`}
-                                      >
-                                        Edit
-                                      </button>
-                                      <button
-                                        onClick={() => deleteComment(comment._id)}
-                                        className="text-xs text-red-600 hover:text-red-700"
-                                      >
-                                        Delete
-                                      </button>
-                                    </>
-                                  )}
-                                </div>
-                              </div>
-                              <p className={`text-sm mb-1 ${
-                                isActive ? 'text-gray-900 font-medium' : 'text-gray-600'
-                              }`}>{comment.text}</p>
-                              <p className={`text-xs ${
-                                isActive ? 'text-gray-600' : 'text-gray-500'
-                              }`}>
-                                By {comment.userId.name} • {new Date(comment.createdAt).toLocaleDateString()}
-                              </p>
-                            </div>
-                          )}
-
-                          {/* Reply input form */}
-                          {replyingToCommentId === comment._id && (
-                            <div className="mt-3 p-3 bg-gray-50 rounded-lg border">
-                              <div className="flex gap-2 mb-2">
-                                <input
-                                  type="text"
-                                  value={replyText}
-                                  onChange={(e) => setReplyText(e.target.value)}
-                                  onKeyPress={(e) => e.key === 'Enter' && addReply(comment._id)}
-                                  placeholder="Write a reply..."
-                                  className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-800 text-sm"
-                                />
-                                <button
-                                  onClick={() => addReply(comment._id)}
-                                  className="px-3 py-2 text-white rounded-lg transition-colors font-medium text-sm"
-                                  style={{ backgroundColor: '#00875F' }}
-                                >
-                                  Reply
-                                </button>
-                                <button
-                                  onClick={cancelReply}
-                                  className="px-3 py-2 bg-gray-200 text-gray-700 rounded-lg text-sm"
-                                >
-                                  Cancel
-                                </button>
-                              </div>
-                            </div>
-                          )}
-
-                          {/* Display replies */}
-                          {comment.replies && comment.replies.length > 0 && (
-                            <div className="mt-3 ml-4 space-y-2">
-                              {comment.replies.map((reply) => (
-                                <div
-                                  key={reply._id}
-                                  className="p-3 bg-gray-50 rounded-lg border-l-2"
-                                  style={{ borderLeftColor: comment.color }}
-                                >
-                                  <div className="flex items-start justify-between mb-2">
-                                    <p className="text-sm text-gray-600">
-                                      <span className="font-medium">{reply.userId.name}</span>
-                                    </p>
-                                    {reply.userId._id === currentUserId && (
-                                      <button
-                                        onClick={() => deleteComment(reply._id)}
-                                        className="text-xs text-red-600 hover:text-red-700"
-                                      >
-                                        Delete
-                                      </button>
-                                    )}
-                                  </div>
-                                  <p className="text-sm text-gray-700 mb-1">{reply.text}</p>
-                                  <p className="text-xs text-gray-500">
-                                    {new Date(reply.createdAt).toLocaleDateString()}
-                                  </p>
-                                </div>
-                              ))}
+                            <div className="flex items-center gap-2">
+                              <p className="text-sm font-medium text-gray-800">{invited.email}</p>
+                              <span className="text-xs px-2 py-0.5 bg-yellow-100 text-yellow-800 rounded">
+                                Pending
+                              </span>
                             </div>
                           )}
                         </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-
-              {/* Add Comment UI - Compact at bottom */}
-              {currentUserId ? (
-                <div className="border-t pt-4">
-                  <div className="flex gap-2 mb-2">
-                    <input
-                      type="text"
-                      value={newComment}
-                      onChange={(e) => setNewComment(e.target.value)}
-                      onKeyPress={(e) => e.key === 'Enter' && addComment()}
-                      placeholder="Add a comment..."
-                      className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-800 text-sm"
-                    />
-                    <button
-                      onClick={addComment}
-                      className="px-4 py-2 text-white rounded-lg transition-colors font-medium text-sm"
-                      style={{ backgroundColor: '#00875F' }}
-                      onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#006644')}
-                      onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = '#00875F')}
-                    >
-                      Add
-                    </button>
-                  </div>
-                  <div className="text-xs text-gray-600">
-                    {selectedRange
-                      ? `Range: ${formatTimeRange(selectedRange.start, selectedRange.end)}`
-                      : `At: ${formatTime(currentTime)}`
-                    }
-                  </div>
-                </div>
-              ) : (
-                <div className="border-t pt-4 text-center">
-                  <p className="text-gray-600 text-sm">
-                    <a href="/login" className="text-blue-500 hover:underline">Log in</a> or <a href="/signup" className="text-blue-500 hover:underline">Sign up</a> to add comments
-                  </p>
-                </div>
-              )}
-            </div>
-
-            {/* Invited Commenters - Only show for logged-in users */}
-            {currentUserId && (
-            <div className={`bg-white rounded-lg shadow-lg p-6 mt-6 ${
-              video.permission === 'anyone-edit' ? 'opacity-50 pointer-events-none' : ''
-            }`}>
-              <div className="flex justify-between items-center mb-4">
-                <h2 className="text-xl font-semibold text-gray-800">Invited Commenters</h2>
-                {isOwner && video.permission !== 'anyone-edit' && (
-                  <button
-                    onClick={() => setShowInviteModal(true)}
-                    className="text-blue-500 hover:text-blue-700"
-                    title="Invite user"
-                  >
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-                      <path d="M8 9a3 3 0 100-6 3 3 0 000 6zM8 11a6 6 0 016 6H2a6 6 0 016-6zM16 7a1 1 0 10-2 0v1h-1a1 1 0 100 2h1v1a1 1 0 102 0v-1h1a1 1 0 100-2h-1V7z" />
-                    </svg>
-                  </button>
-                )}
-              </div>
-              <div className="space-y-2">
-                {video.invitedUsers && video.invitedUsers.length > 0 ? (
-                  video.invitedUsers.map((invited) => (
-                    <div key={invited.email} className="flex items-center justify-between p-2 hover:bg-gray-50 rounded">
-                      <div className="flex-1">
-                        {invited.accepted && invited.userId ? (
-                          <>
-                            <p className="text-sm font-medium text-gray-800">{invited.userId.name}</p>
-                            <p className="text-xs text-gray-500">{invited.email}</p>
-                          </>
-                        ) : (
-                          <div className="flex items-center gap-2">
-                            <p className="text-sm font-medium text-gray-800">{invited.email}</p>
-                            <span className="text-xs px-2 py-0.5 bg-yellow-100 text-yellow-800 rounded">
-                              Pending
-                            </span>
-                          </div>
+                        {isOwner && (
+                          <button
+                            onClick={() => removeInvitedUser(invited.email)}
+                            className="text-red-500 hover:text-red-700"
+                            title="Remove user"
+                          >
+                            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+                              <path fillRule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clipRule="evenodd" />
+                            </svg>
+                          </button>
                         )}
                       </div>
-                      {isOwner && (
-                        <button
-                          onClick={() => removeInvitedUser(invited.email)}
-                          className="text-red-500 hover:text-red-700"
-                          title="Remove user"
-                        >
-                          <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
-                            <path fillRule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clipRule="evenodd" />
-                          </svg>
-                        </button>
-                      )}
-                    </div>
-                  ))
-                ) : (
-                  <p className="text-sm text-gray-500 italic">No invited users yet</p>
+                    ))
+                  ) : (
+                    <p className="text-sm text-gray-500 italic">No invited users yet</p>
+                  )}
+                </div>
+                {video.permission === 'anyone-edit' && (
+                  <p className="text-xs text-gray-500 mt-4 italic">
+                    Invite list is disabled when permission is set to "Anyone Can Edit"
+                  </p>
                 )}
               </div>
-              {video.permission === 'anyone-edit' && (
-                <p className="text-xs text-gray-500 mt-4 italic">
-                  Invite list is disabled when permission is set to "Anyone Can Edit"
-                </p>
               )}
             </div>
-            )}
+
           </div>
+
         </div>
 
         {/* Permission Modal */}
