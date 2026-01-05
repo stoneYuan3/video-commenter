@@ -87,10 +87,13 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    // Fetch comments
-    const sortOrder = commentedToType === 'video'
-      ? { timestamp: 1, 'timeRange.start': 1 } // Sort video comments by time
-      : { createdAt: -1 }; // Sort project comments by newest first
+    // Fetch comments with appropriate sort order
+    let sortQuery: any;
+    if (commentedToType === 'video') {
+      sortQuery = { timestamp: 1 }; // Sort video comments by timestamp
+    } else {
+      sortQuery = { createdAt: -1 }; // Sort project comments by newest first
+    }
 
     const comments = await Comment.find({
       commentedTo,
@@ -105,7 +108,7 @@ export async function GET(req: NextRequest) {
           select: 'name email username'
         }
       })
-      .sort(sortOrder);
+      .sort(sortQuery);
 
     return NextResponse.json({ comments }, { status: 200 });
   } catch (error: any) {

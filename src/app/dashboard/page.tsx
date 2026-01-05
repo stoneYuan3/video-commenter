@@ -249,17 +249,17 @@ export default function DashboardPage() {
     }
   };
 
-  const openPermissionModal = (video: Video, e: React.MouseEvent) => {
+  const openPermissionModal = (project: Project, e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    setSelectedVideo(video);
+    setSelectedVideo(project);
     setShowPermissionModal(true);
   };
 
-  const openInviteModal = (video: Video, e: React.MouseEvent) => {
+  const openInviteModal = (project: Project, e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    setSelectedVideo(video);
+    setSelectedVideo(project);
     setShowInviteModal(true);
   };
 
