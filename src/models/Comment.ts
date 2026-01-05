@@ -1,7 +1,8 @@
 import mongoose, { Schema, Document, Types } from 'mongoose';
 
 export interface IComment extends Document {
-  videoId: Types.ObjectId;
+  videoId: Types.ObjectId; // Project ID
+  videoItemId: Types.ObjectId; // Specific video item ID within the project
   userId: Types.ObjectId;
   text: string;
   timestamp?: number;
@@ -13,7 +14,7 @@ export interface IComment extends Document {
   color: string;
   parentCommentId?: Types.ObjectId;
   replies?: Types.ObjectId[];
-  videoIndex: number; // NEW: Which video in the videos array (0, 1, 2...)
+  videoIndex?: number; // DEPRECATED: Keep for backward compatibility during migration
   createdAt: Date;
   updatedAt: Date;
 }
@@ -23,6 +24,10 @@ const CommentSchema = new Schema<IComment>(
     videoId: {
       type: Schema.Types.ObjectId,
       ref: 'Video',
+      required: true,
+    },
+    videoItemId: {
+      type: Schema.Types.ObjectId,
       required: true,
     },
     userId: {
@@ -57,8 +62,7 @@ const CommentSchema = new Schema<IComment>(
     }],
     videoIndex: {
       type: Number,
-      required: true,
-      default: 0, // Default to first video for backward compatibility
+      // DEPRECATED: Keep for backward compatibility, no longer required
     },
   },
   {
@@ -66,9 +70,10 @@ const CommentSchema = new Schema<IComment>(
   }
 );
 
-// Index for faster queries (updated to include videoIndex)
-CommentSchema.index({ videoId: 1, videoIndex: 1, timestamp: 1 });
-CommentSchema.index({ videoId: 1, videoIndex: 1, userId: 1 });
+// Index for faster queries (updated to use videoItemId)
+CommentSchema.index({ videoId: 1, videoItemId: 1, timestamp: 1 });
+CommentSchema.index({ videoId: 1, videoItemId: 1, userId: 1 });
+CommentSchema.index({ videoItemId: 1, timestamp: 1 });
 CommentSchema.index({ parentCommentId: 1 });
 
 export default mongoose.models.Comment || mongoose.model<IComment>('Comment', CommentSchema);

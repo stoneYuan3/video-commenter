@@ -8,6 +8,7 @@ export interface InvitedUser {
 }
 
 export interface IVideoItem {
+  _id?: Types.ObjectId; // Optional for backward compatibility with legacy videos
   videoSource: 'youtube' | 'upload' | 'gdrive';
   videoId?: string;
   gdriveId?: string;
@@ -57,7 +58,7 @@ const VideoItemSchema = new Schema<IVideoItem>({
     required: true,
     default: 0,
   }
-}, { _id: false });
+}, { _id: true });
 
 const VideoSchema = new Schema<IVideo>(
   {

@@ -24,6 +24,7 @@ interface Comment {
 }
 
 interface VideoItem {
+  _id?: string; // Optional for backward compatibility with legacy videos
   videoSource: 'youtube' | 'upload' | 'gdrive';
   videoId?: string;
   gdriveId?: string;
@@ -196,11 +197,14 @@ export default function VideoPage() {
         setIsOwner(videoData.video.userId === loggedInUserId);
       }
 
-      // Fetch comments
-      const commentsRes = await fetch(`/api/comments?videoId=${videoIdParam}&videoIndex=${currentVideoIndex}`);
-      if (commentsRes.ok) {
-        const commentsData = await commentsRes.json();
-        setComments(commentsData.comments);
+      // Fetch comments - get current video item ID
+      const currentVideo = getCurrentVideo();
+      if (currentVideo && currentVideo._id) {
+        const commentsRes = await fetch(`/api/comments?videoId=${videoIdParam}&videoItemId=${currentVideo._id}`);
+        if (commentsRes.ok) {
+          const commentsData = await commentsRes.json();
+          setComments(commentsData.comments);
+        }
       }
     } catch (err: any) {
       setError(err.message);
@@ -408,9 +412,15 @@ export default function VideoPage() {
   const addComment = async () => {
     if (!newComment.trim() || !video) return;
 
+    const currentVideo = getCurrentVideo();
+    if (!currentVideo || !currentVideo._id) {
+      alert('Unable to determine current video item');
+      return;
+    }
+
     const commentData = {
       videoId: video._id,
-      videoIndex: currentVideoIndex,
+      videoItemId: currentVideo._id,
       text: newComment,
       timeString: selectedRange
         ? formatTimeRange(selectedRange.start, selectedRange.end)
@@ -449,9 +459,15 @@ export default function VideoPage() {
   const addReply = async (parentCommentId: string) => {
     if (!replyText.trim() || !video) return;
 
+    const currentVideo = getCurrentVideo();
+    if (!currentVideo || !currentVideo._id) {
+      alert('Unable to determine current video item');
+      return;
+    }
+
     const replyData = {
       videoId: video._id,
-      videoIndex: currentVideoIndex,
+      videoItemId: currentVideo._id,
       text: replyText,
       parentCommentId,
     };

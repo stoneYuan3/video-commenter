@@ -16,10 +16,14 @@ export async function GET(req: NextRequest) {
 
     const { searchParams } = new URL(req.url);
     const videoId = searchParams.get('videoId');
-    const videoIndex = parseInt(searchParams.get('videoIndex') || '0', 10);
+    const videoItemId = searchParams.get('videoItemId');
 
     if (!videoId) {
       return NextResponse.json({ error: 'Video ID is required' }, { status: 400 });
+    }
+
+    if (!videoItemId) {
+      return NextResponse.json({ error: 'Video Item ID is required' }, { status: 400 });
     }
 
     // Check video permissions
@@ -48,7 +52,7 @@ export async function GET(req: NextRequest) {
 
     const comments = await Comment.find({
       videoId,
-      videoIndex,  // NEW: Filter by videoIndex
+      videoItemId,  // Filter by specific video item ID
       parentCommentId: { $exists: false }
     })
       .populate('userId', 'name email username')
@@ -83,12 +87,12 @@ export async function POST(req: NextRequest) {
     await connectDB();
     initializeModels();
 
-    const { videoId, text, timestamp, timeRange, timeString, color, parentCommentId, videoIndex = 0 } = await req.json();
+    const { videoId, videoItemId, text, timestamp, timeRange, timeString, color, parentCommentId } = await req.json();
 
     // Validation
-    if (!videoId || !text) {
+    if (!videoId || !videoItemId || !text) {
       return NextResponse.json(
-        { error: 'Video ID and text are required' },
+        { error: 'Video ID, Video Item ID, and text are required' },
         { status: 400 }
       );
     }
@@ -103,6 +107,7 @@ export async function POST(req: NextRequest) {
 
     const comment = await Comment.create({
       videoId,
+      videoItemId,
       userId: user.userId,
       text,
       timestamp,
@@ -110,7 +115,6 @@ export async function POST(req: NextRequest) {
       timeString,
       color,
       parentCommentId,
-      videoIndex,  // NEW: Save videoIndex
     });
 
     // If this is a reply, add it to the parent comment's replies array
