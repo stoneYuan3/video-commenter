@@ -20,10 +20,13 @@ export async function PUT(
     initializeModels();
 
     const { id } = await params;
-    const { text } = await req.json();
+    const { content } = await req.json();
 
-    if (!text) {
-      return NextResponse.json({ error: 'Comment text is required' }, { status: 400 });
+    // Support both 'content' (new) and 'text' (backward compatibility)
+    const commentText = content;
+
+    if (!commentText) {
+      return NextResponse.json({ error: 'Comment content is required' }, { status: 400 });
     }
 
     const comment = await Comment.findById(id);
@@ -37,7 +40,7 @@ export async function PUT(
       return NextResponse.json({ error: 'Unauthorized to edit this comment' }, { status: 403 });
     }
 
-    comment.text = text;
+    comment.content = commentText;
     await comment.save();
 
     const populatedComment = await Comment.findById(comment._id).populate('userId', 'name email');
@@ -82,9 +85,9 @@ export async function DELETE(
     }
 
     // If this is a reply, remove it from parent's replies array
-    if (comment.parentCommentId) {
+    if (comment.parentComment) {
       await Comment.findByIdAndUpdate(
-        comment.parentCommentId,
+        comment.parentComment,
         { $pull: { replies: comment._id } }
       );
     }

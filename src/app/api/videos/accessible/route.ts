@@ -3,7 +3,15 @@ import connectDB from '@/lib/mongodb';
 import initializeModels from '@/lib/initModels';
 import { getUserFromRequest } from '@/lib/auth';
 
-// GET all videos accessible to the current user (owned + shared)
+/**
+ * GET /api/videos/accessible
+ * Retrieves all projects accessible to the current user
+ * Includes:
+ * - Projects owned by the user
+ * - Projects where user is invited and has accepted the invitation
+ *
+ * Returns: Array of projects sorted by last opened time (most recent first)
+ */
 export async function GET(req: NextRequest) {
   const requestId = Math.random().toString(36).substring(7);
   const timestamp = new Date().toISOString();
@@ -47,16 +55,16 @@ export async function GET(req: NextRequest) {
     // Initialize all models to prevent MissingSchemaError during populate()
     // This is critical for serverless environments after cold starts
     console.log(`[${timestamp}] [${requestId}] Initializing models...`);
-    const { Video, User } = initializeModels();
+    const { Project, User } = initializeModels();
     console.log(`[${timestamp}] [${requestId}] Models initialized successfully`);
 
-    console.log(`[${timestamp}] [${requestId}] Querying videos for user...`);
+    console.log(`[${timestamp}] [${requestId}] Querying projects for user...`);
     const queryStartTime = Date.now();
 
-    // Find videos where:
+    // Find projects where:
     // 1. User is the owner, OR
     // 2. User's email is in the invitedUsers list AND accepted is true
-    const videos = await Video.find({
+    const projects = await Project.find({
       $or: [
         { userId: user.userId },
         {
@@ -70,17 +78,21 @@ export async function GET(req: NextRequest) {
       ]
     })
     .populate('userId', 'username name email')
-    .populate('invitedUsers.userId', 'name email');
+    .populate('invitedUsers.userId', 'name email')
+    .populate({
+      path: 'videos',
+      select: 'videoTitle thumbnail _id', // Only fetch metadata for dashboard display
+    });
 
     const queryTime = Date.now() - queryStartTime;
-    console.log(`[${timestamp}] [${requestId}] Query completed in ${queryTime}ms, found ${videos.length} videos`);
+    console.log(`[${timestamp}] [${requestId}] Query completed in ${queryTime}ms, found ${projects.length} projects`);
 
-    // Sort videos by last opened time for this user (most recent first)
-    const sortedVideos = videos.map(video => {
-      const lastOpened = video.lastOpenedBy?.get(user.userId);
+    // Sort projects by last opened time for this user (most recent first)
+    const sortedProjects = projects.map(project => {
+      const lastOpened = project.lastOpenedBy?.get(user.userId);
       return {
-        ...video.toObject(),
-        lastOpenedAt: lastOpened || video.createdAt, // Fallback to createdAt if never opened
+        ...project.toObject(),
+        lastOpenedAt: lastOpened || project.createdAt, // Fallback to createdAt if never opened
       };
     }).sort((a, b) => {
       const timeA = new Date(a.lastOpenedAt).getTime();
@@ -90,10 +102,10 @@ export async function GET(req: NextRequest) {
 
     const totalTime = Date.now() - dbStartTime;
     console.log(`[${timestamp}] [${requestId}] Request completed successfully in ${totalTime}ms`, {
-      videoCount: sortedVideos.length,
+      projectCount: sortedProjects.length,
     });
 
-    return NextResponse.json({ videos: sortedVideos }, { status: 200 });
+    return NextResponse.json({ videos: sortedProjects }, { status: 200 }); // Keep 'videos' key for backward compatibility with frontend
   } catch (error: any) {
     console.error(`[${timestamp}] [${requestId}] GET /api/videos/accessible - ERROR:`, {
       errorName: error.name,

@@ -4,50 +4,49 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { VideoPlayer } from '@/components/VideoPlayer';
 
+/**
+ * Comment Interface
+ * Represents both project-level and video-level comments
+ */
 interface Comment {
   _id: string;
-  videoId: string;
+  commentedTo: string;                    // Project ID or Video ID
+  commentedToType: 'project' | 'video';   // Type of comment
   userId: {
     _id: string;
     name: string;
     email: string;
   };
-  text: string;
-  timestamp?: number;
-  timeRange?: { start: number; end: number };
-  timeString: string;
-  color: string;
-  displayId?: string;
+  content: string;                        // Comment text
+  timestamp?: number;                     // Video timestamp (video comments only)
+  timeRange?: { start: number; end: number }; // Time range (video comments only)
+  timeString?: string;                    // Human-readable time (video comments only)
+  color?: string;                         // Timeline color (video comments only)
+  displayId?: string;                     // Temporary UI identifier
   createdAt: string;
-  parentCommentId?: string;
+  parentComment?: string;
   replies?: Comment[];
 }
 
-interface VideoItem {
-  _id?: string; // Optional for backward compatibility with legacy videos
-  videoSource: 'youtube' | 'upload' | 'gdrive';
-  videoId?: string;
-  gdriveId?: string;
-  uploadedVideoUrl?: string;
-  duration?: number;
-  thumbnail?: string;
-  order: number;
-}
-
+/**
+ * Video Interface
+ * Represents a single video within a project
+ */
 interface Video {
   _id: string;
+  videoTitle: string;
+  videoSource: string;                    // YouTube video ID or upload path
+  thumbnail: string;
+  duration?: number;
+}
+
+/**
+ * Project Interface
+ * Represents a project containing multiple videos
+ */
+interface Project {
+  _id: string;
   title: string;
-
-  // NEW: Videos array
-  videos?: VideoItem[];
-
-  // LEGACY: Keep for backward compatibility
-  videoSource?: 'youtube' | 'upload' | 'gdrive';
-  videoId?: string;
-  gdriveId?: string;
-  uploadedVideoUrl?: string;
-
-  duration: number;
   userId?: {
     _id: string;
     name: string;
@@ -64,8 +63,28 @@ interface Video {
     };
     invitedAt: string;
   }>;
+  videos: Video[];                        // Array of video metadata
+  createdAt: string;
+  updatedAt: string;
 }
 
+/**
+ * API Response Interface
+ */
+interface ProjectResponse {
+  project: Project;
+  currentVideo: Video;
+  videoComments: Comment[];
+  projectComments?: Comment[];            // Only present on initial load
+  userPermissions: {
+    canView: boolean;
+    canComment: boolean;
+    isOwner: boolean;
+    isInvited: boolean;
+  };
+}
+
+// YouTube API types
 declare global {
   interface Window {
     YT: any;
@@ -73,23 +92,48 @@ declare global {
   }
 }
 
+/**
+ * ProjectViewPage Component
+ * Main page for viewing and interacting with a project
+ * Features:
+ * - Video switching with lazy loading
+ * - General project comments
+ * - Video-specific timestamp comments
+ * - Permission management
+ * - User invitations
+ */
 export default function VideoPage() {
   const params = useParams();
   const router = useRouter();
-  const videoIdParam = params?.id as string;
+  const projectIdParam = params?.id as string;
 
-  const [video, setVideo] = useState<Video | null>(null);
-  const [comments, setComments] = useState<Comment[]>([]);
+  // Project and video state
+  const [project, setProject] = useState<Project | null>(null);
+  const [currentVideo, setCurrentVideo] = useState<Video | null>(null);
+  const [currentVideoIndex, setCurrentVideoIndex] = useState(0);
+
+  // Comment state
+  const [projectComments, setProjectComments] = useState<Comment[]>([]);     // General project comments
+  const [videoComments, setVideoComments] = useState<Comment[]>([]);         // Current video's timestamp comments
+  const [displayedComments, setDisplayedComments] = useState<Comment[]>([]); // Currently visible timestamp comments
+
+  // Comment input state
   const [newComment, setNewComment] = useState('');
+  const [newProjectComment, setNewProjectComment] = useState('');
+
+  // Video player state
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
-  const [displayedComments, setDisplayedComments] = useState<Comment[]>([]);
+  const [isPlaying, setIsPlaying] = useState(false);
+
+  // Timeline interaction state
   const [selectedRange, setSelectedRange] = useState<{ start: number; end: number } | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [dragStart, setDragStart] = useState<number | null>(null);
   const [hasDragged, setHasDragged] = useState(false);
   const [hoveredComment, setHoveredComment] = useState<Comment | null>(null);
-  const [isPlaying, setIsPlaying] = useState(false);
+
+  // UI state
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [currentUserId, setCurrentUserId] = useState<string>('');
@@ -101,11 +145,11 @@ export default function VideoPage() {
   const [isOwner, setIsOwner] = useState(false);
   const [accessDenied, setAccessDenied] = useState(false);
   const [ownerEmail, setOwnerEmail] = useState('');
-  const [videoTitle, setVideoTitle] = useState('');
+  const [projectTitle, setProjectTitle] = useState('');
   const [replyingToCommentId, setReplyingToCommentId] = useState<string | null>(null);
   const [replyText, setReplyText] = useState('');
-  const [currentVideoIndex, setCurrentVideoIndex] = useState(0);
 
+  // Refs
   const playerRef = useRef<any>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const timelineRef = useRef<HTMLDivElement>(null);
@@ -116,42 +160,11 @@ export default function VideoPage() {
   const commentsContainerRef = useRef<HTMLDivElement>(null);
   const commentRefs = useRef<Map<string, HTMLDivElement>>(new Map());
 
-  // Helper to get current video (supports both old and new structure)
-  const getCurrentVideo = useCallback((): VideoItem | null => {
-    console.log('start')
-    if (!video) return null;
-
-    // Try new structure first
-    if (video.videos && video.videos.length > currentVideoIndex) {
-      console.log('new')
-      return video.videos[currentVideoIndex];
-    }
-
-    // Fallback to old structure
-    if (video.videoSource) {
-      console.log('old')
-      return {
-        videoSource: video.videoSource,
-        videoId: video.videoId,
-        gdriveId: video.gdriveId,
-        uploadedVideoUrl: video.uploadedVideoUrl,
-        duration: video.duration,
-        thumbnail: undefined,
-        order: 0
-      };
-    }
-
-    return null;
-  }, [video, currentVideoIndex]);
-
-  // Fetch video and comments on mount
-  useEffect(() => {
-    if (videoIdParam) {
-      fetchVideoAndComments();
-    }
-  }, [videoIdParam]);
-
-  const fetchVideoAndComments = async () => {
+  /**
+   * Fetch project data with optional video switching
+   * @param videoIndex - Index of video to load (default: 0)
+   */
+  const fetchProjectData = async (videoIndex: number = 0) => {
     try {
       setLoading(true);
       setError('');
@@ -166,49 +179,49 @@ export default function VideoPage() {
           setCurrentUserId(userData.userId);
         }
       } catch (e) {
-        // Not logged in, that's okay for public videos
         console.log('User not logged in');
       }
 
-      // Fetch video
-      const videoRes = await fetch(`/api/videos/${videoIdParam}`);
-      if (videoRes.status === 401 || videoRes.status === 403) {
-        const errorData = await videoRes.json();
+      // Fetch project with specified video index
+      const projectRes = await fetch(`/api/videos/${projectIdParam}?videoIndex=${videoIndex}`);
+
+      if (projectRes.status === 401 || projectRes.status === 403) {
+        const errorData = await projectRes.json();
         if (errorData.accessDenied) {
-          // Show access denied UI
           setAccessDenied(true);
           setOwnerEmail(errorData.ownerEmail || '');
-          setVideoTitle(errorData.videoTitle || 'this video');
+          setProjectTitle(errorData.videoTitle || 'this project');
           setLoading(false);
           return;
         }
         router.push('/login');
         return;
       }
-      if (!videoRes.ok) {
-        throw new Error('Failed to fetch video');
+
+      if (!projectRes.ok) {
+        throw new Error('Failed to fetch project');
       }
-      const videoData = await videoRes.json();
-      console.log('Fetched video data:', videoData.video);
-      setVideo(videoData.video);
+
+      const data: ProjectResponse = await projectRes.json();
+      console.log('Fetched project data:', data);
+
+      // Set project data (only on initial load)
+      if (videoIndex === 0) {
+        setProject(data.project);
+        setProjectComments(data.projectComments || []);
+      }
+
+      // Set current video and its comments (always)
+      setCurrentVideo(data.currentVideo);
+      setVideoComments(data.videoComments);
 
       // Check if current user is the owner
-      if (videoData.userPermissions) {
-        setIsOwner(videoData.userPermissions.isOwner);
+      if (data.userPermissions) {
+        setIsOwner(data.userPermissions.isOwner);
       } else if (loggedInUserId) {
-        // Fallback: check if userId matches
-        setIsOwner(videoData.video.userId === loggedInUserId);
+        setIsOwner(data.project.userId?._id === loggedInUserId);
       }
 
-      // Fetch comments - get current video item ID
-      const currentVideo = getCurrentVideo();
-      if (currentVideo && currentVideo._id) {
-        const commentsRes = await fetch(`/api/comments?videoId=${videoIdParam}&videoItemId=${currentVideo._id}`);
-        if (commentsRes.ok) {
-          const commentsData = await commentsRes.json();
-          setComments(commentsData.comments);
-        }
-      }
     } catch (err: any) {
       setError(err.message);
     } finally {
@@ -216,9 +229,26 @@ export default function VideoPage() {
     }
   };
 
+  /**
+   * Handle video switching
+   * Lazy loads the selected video's details and comments
+   */
+  const handleVideoSwitch = async (newIndex: number) => {
+    if (newIndex === currentVideoIndex) return; // Already on this video
+
+    setCurrentVideoIndex(newIndex);
+    await fetchProjectData(newIndex);
+  };
+
+  // Initial load on mount
+  useEffect(() => {
+    if (projectIdParam) {
+      fetchProjectData(0);
+    }
+  }, [projectIdParam]);
+
   // Load YouTube IFrame API on mount
   useEffect(() => {
-    // Load the API script if not already present
     if (!document.querySelector('script[src*="youtube.com/iframe_api"]')) {
       const tag = document.createElement('script');
       tag.src = 'https://www.youtube.com/iframe_api';
@@ -227,13 +257,11 @@ export default function VideoPage() {
       firstScriptTag.parentNode?.insertBefore(tag, firstScriptTag);
     }
 
-    // Set up callback for when API loads
     window.onYouTubeIframeAPIReady = () => {
       ytApiLoadedRef.current = true;
     };
 
     return () => {
-      // Cleanup on unmount
       if (playerRef.current && playerRef.current.destroy) {
         playerRef.current.destroy();
         playerRef.current = null;
@@ -243,10 +271,9 @@ export default function VideoPage() {
     };
   }, []);
 
-  // Reset initialization flag when video changes
+  // Reset player when video changes
   useEffect(() => {
-    const currentVideo = getCurrentVideo();
-    if (currentVideo?.videoSource !== 'youtube') {
+    if (currentVideo?.videoSource) {
       if (playerRef.current && playerRef.current.destroy) {
         playerRef.current.destroy();
         playerRef.current = null;
@@ -254,18 +281,18 @@ export default function VideoPage() {
       playerInitializedRef.current = false;
       currentVideoIdRef.current = '';
     }
-  }, [getCurrentVideo]);
+  }, [currentVideo?.videoSource]);
 
-  // Callback ref for YouTube player div - called when div is rendered
+  // YouTube player callback
   const youtubePlayerCallback = useCallback((node: HTMLDivElement | null) => {
-    const currentVideo = getCurrentVideo();
-
-    if (!node || !currentVideo || currentVideo.videoSource !== 'youtube' || !currentVideo.videoId) {
+    if (!node || !currentVideo || !currentVideo.videoSource) {
       return;
     }
 
+    const videoId = currentVideo.videoSource;
+
     // Check if already initialized with the same video
-    if (playerInitializedRef.current && currentVideoIdRef.current === currentVideo.videoId && playerRef.current) {
+    if (playerInitializedRef.current && currentVideoIdRef.current === videoId && playerRef.current) {
       return;
     }
 
@@ -280,7 +307,7 @@ export default function VideoPage() {
         playerRef.current = new window.YT.Player(node, {
           height: '480',
           width: '100%',
-          videoId: currentVideo.videoId,
+          videoId: videoId,
           playerVars: {
             'playsinline': 1,
             'controls': 0,
@@ -292,28 +319,24 @@ export default function VideoPage() {
           }
         });
         playerInitializedRef.current = true;
-        currentVideoIdRef.current = currentVideo.videoId || '';
+        currentVideoIdRef.current = videoId;
       } catch (error) {
         console.error('Error creating YouTube player:', error);
       }
     };
 
-    // Check if YouTube API is ready
     if (window.YT && window.YT.Player) {
       createPlayer();
     } else {
-      // Wait for API to load
       const checkInterval = setInterval(() => {
         if (window.YT && window.YT.Player) {
           clearInterval(checkInterval);
           createPlayer();
         }
       }, 100);
-
-      // Cleanup interval after 10 seconds
       setTimeout(() => clearInterval(checkInterval), 10000);
     }
-  }, [getCurrentVideo]);
+  }, [currentVideo]);
 
   const onPlayerReady = () => {
     const dur = playerRef.current.getDuration();
@@ -329,32 +352,9 @@ export default function VideoPage() {
     return () => clearInterval(interval);
   };
 
-  // Handle custom video player time updates (for upload)
+  // Show timestamp comments when time matches
   useEffect(() => {
-    if (!video || video.videoSource !== 'upload' || !videoRef.current) return;
-
-    const videoEl = videoRef.current;
-
-    const updateTime = () => setCurrentTime(videoEl.currentTime);
-    const updateDuration = () => setDuration(videoEl.duration);
-    const updatePlayState = () => setIsPlaying(!videoEl.paused);
-
-    videoEl.addEventListener('timeupdate', updateTime);
-    videoEl.addEventListener('loadedmetadata', updateDuration);
-    videoEl.addEventListener('play', updatePlayState);
-    videoEl.addEventListener('pause', updatePlayState);
-
-    return () => {
-      videoEl.removeEventListener('timeupdate', updateTime);
-      videoEl.removeEventListener('loadedmetadata', updateDuration);
-      videoEl.removeEventListener('play', updatePlayState);
-      videoEl.removeEventListener('pause', updatePlayState);
-    };
-  }, [video]);
-
-  // Show comments when timestamp matches (no delay - instant update)
-  useEffect(() => {
-    const matchingComments = comments.filter(comment => {
+    const matchingComments = videoComments.filter(comment => {
       if (comment.timestamp !== undefined) {
         return Math.abs(comment.timestamp - currentTime) < 1;
       } else if (comment.timeRange) {
@@ -363,11 +363,9 @@ export default function VideoPage() {
       return false;
     });
 
-    // Clear all existing timeouts since we're updating immediately
     removalTimeoutsRef.current.forEach(timeout => clearTimeout(timeout));
     removalTimeoutsRef.current.clear();
 
-    // Auto-scroll to first matching comment if it's newly active
     const prevDisplayedIds = new Set(displayedComments.map(c => c._id));
     const newlyActive = matchingComments.filter(c => !prevDisplayedIds.has(c._id));
 
@@ -381,12 +379,11 @@ export default function VideoPage() {
       }
     }
 
-    // Set displayed comments to only the currently matching ones (no delay)
     setDisplayedComments(matchingComments.map(comment => ({
       ...comment,
       displayId: `${comment._id}-${Date.now()}`
     })));
-  }, [currentTime, comments]);
+  }, [currentTime, videoComments]);
 
   const formatTime = (seconds: number): string => {
     const hours = Math.floor(seconds / 3600);
@@ -412,19 +409,16 @@ export default function VideoPage() {
     return colors[Math.floor(Math.random() * colors.length)];
   };
 
-  const addComment = async () => {
-    if (!newComment.trim() || !video) return;
-
-    const currentVideo = getCurrentVideo();
-    if (!currentVideo || !currentVideo.videoId) {
-      alert('Unable to determine current video item');
-      return;
-    }
+  /**
+   * Add a video-specific timestamp comment
+   */
+  const addVideoComment = async () => {
+    if (!newComment.trim() || !currentVideo || !project) return;
 
     const commentData = {
-      videoId: video.videoId,
-      videoItemId: currentVideo.videoId,
-      text: newComment,
+      commentedTo: currentVideo._id,
+      commentedToType: 'video' as const,
+      content: newComment,
       timeString: selectedRange
         ? formatTimeRange(selectedRange.start, selectedRange.end)
         : formatTime(currentTime),
@@ -433,7 +427,7 @@ export default function VideoPage() {
         ? { timeRange: selectedRange }
         : { timestamp: currentTime }),
     };
-    console.log(commentData)
+
     try {
       const res = await fetch('/api/comments', {
         method: 'POST',
@@ -446,7 +440,7 @@ export default function VideoPage() {
       }
 
       const data = await res.json();
-      setComments(prev => [...prev, data.comment].sort((a, b) => {
+      setVideoComments(prev => [...prev, data.comment].sort((a, b) => {
         const aTime = a.timestamp ?? a.timeRange?.start ?? 0;
         const bTime = b.timestamp ?? b.timeRange?.start ?? 0;
         return aTime - bTime;
@@ -454,25 +448,51 @@ export default function VideoPage() {
       setNewComment('');
       setSelectedRange(null);
     } catch (err: any) {
-      console.error('Add comment error:', err);
+      console.error('Add video comment error:', err);
       alert('Failed to add comment');
     }
   };
 
-  const addReply = async (parentCommentId: string) => {
-    if (!replyText.trim() || !video) return;
+  /**
+   * Add a general project comment
+   */
+  const addProjectComment = async () => {
+    if (!newProjectComment.trim() || !project) return;
 
-    const currentVideo = getCurrentVideo();
-    if (!currentVideo || !currentVideo._id) {
-      alert('Unable to determine current video item');
-      return;
+    const commentData = {
+      commentedTo: project._id,
+      commentedToType: 'project' as const,
+      content: newProjectComment,
+    };
+
+    try {
+      const res = await fetch('/api/comments', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(commentData),
+      });
+
+      if (!res.ok) {
+        throw new Error('Failed to add project comment');
+      }
+
+      const data = await res.json();
+      setProjectComments(prev => [data.comment, ...prev]); // Add to top (newest first)
+      setNewProjectComment('');
+    } catch (err: any) {
+      console.error('Add project comment error:', err);
+      alert('Failed to add project comment');
     }
+  };
+
+  const addReply = async (parentCommentId: string, commentType: 'project' | 'video') => {
+    if (!replyText.trim() || !currentVideo || !project) return;
 
     const replyData = {
-      videoId: video._id,
-      videoItemId: currentVideo._id,
-      text: replyText,
-      parentCommentId,
+      commentedTo: commentType === 'project' ? project._id : currentVideo._id,
+      commentedToType: commentType,
+      content: replyText,
+      parentComment: parentCommentId,
     };
 
     try {
@@ -487,18 +507,30 @@ export default function VideoPage() {
       }
 
       const data = await res.json();
-      
-      // Update the parent comment with the new reply
-      setComments(prev => prev.map(comment => {
-        if (comment._id === parentCommentId) {
-          return {
-            ...comment,
-            replies: [...(comment.replies || []), data.comment]
-          };
-        }
-        return comment;
-      }));
-      
+
+      // Update appropriate comment list
+      if (commentType === 'project') {
+        setProjectComments(prev => prev.map(comment => {
+          if (comment._id === parentCommentId) {
+            return {
+              ...comment,
+              replies: [...(comment.replies || []), data.comment]
+            };
+          }
+          return comment;
+        }));
+      } else {
+        setVideoComments(prev => prev.map(comment => {
+          if (comment._id === parentCommentId) {
+            return {
+              ...comment,
+              replies: [...(comment.replies || []), data.comment]
+            };
+          }
+          return comment;
+        }));
+      }
+
       setReplyText('');
       setReplyingToCommentId(null);
     } catch (err: any) {
@@ -519,7 +551,7 @@ export default function VideoPage() {
 
   const startEdit = (comment: Comment) => {
     setEditingCommentId(comment._id);
-    setEditText(comment.text);
+    setEditText(comment.content);
   };
 
   const cancelEdit = () => {
@@ -534,7 +566,7 @@ export default function VideoPage() {
       const res = await fetch(`/api/comments/${commentId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text: editText }),
+        body: JSON.stringify({ content: editText }),
       });
 
       if (!res.ok) {
@@ -542,7 +574,11 @@ export default function VideoPage() {
       }
 
       const data = await res.json();
-      setComments(prev => prev.map(c => c._id === commentId ? data.comment : c));
+
+      // Update in both lists (in case it's in either)
+      setProjectComments(prev => prev.map(c => c._id === commentId ? data.comment : c));
+      setVideoComments(prev => prev.map(c => c._id === commentId ? data.comment : c));
+
       setEditingCommentId(null);
       setEditText('');
     } catch (err: any) {
@@ -551,7 +587,7 @@ export default function VideoPage() {
     }
   };
 
-  const deleteComment = async (commentId: string) => {
+  const deleteComment = async (commentId: string, commentType: 'project' | 'video') => {
     if (!confirm('Are you sure you want to delete this comment?')) return;
 
     try {
@@ -563,30 +599,40 @@ export default function VideoPage() {
         throw new Error('Failed to delete comment');
       }
 
-      //2025-12-07
-      // Update state to handle both top-level comment deletion and nested reply deletion
-      // This ensures deleted items disappear immediately from the UI without requiring a page refresh
-      setComments(prev => prev.map(comment => {
-        // Check if we're deleting this top-level comment
-        if (comment._id === commentId) {
-          return null; // Mark for removal
-        }
-
-        // Check if we're deleting a reply to this comment
-        if (comment.replies && comment.replies.length > 0) {
-          const replyIndex = comment.replies.findIndex(r => r._id === commentId);
-          if (replyIndex !== -1) {
-            // Found the reply in this comment's replies array
-            // Create new comment object with updated replies (immutable update)
-            return {
-              ...comment,
-              replies: comment.replies.filter(r => r._id !== commentId)
-            };
+      // Update appropriate comment list
+      if (commentType === 'project') {
+        setProjectComments(prev => prev.map(comment => {
+          if (comment._id === commentId) {
+            return null;
           }
-        }
-
-        return comment; // Keep unchanged
-      }).filter(c => c !== null) as Comment[]); // Remove marked nulls (deleted top-level comments)
+          if (comment.replies && comment.replies.length > 0) {
+            const replyIndex = comment.replies.findIndex(r => r._id === commentId);
+            if (replyIndex !== -1) {
+              return {
+                ...comment,
+                replies: comment.replies.filter(r => r._id !== commentId)
+              };
+            }
+          }
+          return comment;
+        }).filter(c => c !== null) as Comment[]);
+      } else {
+        setVideoComments(prev => prev.map(comment => {
+          if (comment._id === commentId) {
+            return null;
+          }
+          if (comment.replies && comment.replies.length > 0) {
+            const replyIndex = comment.replies.findIndex(r => r._id === commentId);
+            if (replyIndex !== -1) {
+              return {
+                ...comment,
+                replies: comment.replies.filter(r => r._id !== commentId)
+              };
+            }
+          }
+          return comment;
+        }).filter(c => c !== null) as Comment[]);
+      }
     } catch (err: any) {
       console.error('Delete comment error:', err);
       alert('Failed to delete comment');
@@ -594,10 +640,10 @@ export default function VideoPage() {
   };
 
   const updatePermission = async (permission: string) => {
-    if (!video) return;
+    if (!project) return;
 
     try {
-      const res = await fetch(`/api/videos/${video._id}/permissions`, {
+      const res = await fetch(`/api/videos/${project._id}/permissions`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ permission }),
@@ -608,7 +654,7 @@ export default function VideoPage() {
       }
 
       const data = await res.json();
-      setVideo(data.video);
+      setProject(data.video);
       setShowPermissionModal(false);
     } catch (err: any) {
       console.error('Update permission error:', err);
@@ -617,10 +663,10 @@ export default function VideoPage() {
   };
 
   const inviteUser = async () => {
-    if (!video || !inviteEmail.trim()) return;
+    if (!project || !inviteEmail.trim()) return;
 
     try {
-      const res = await fetch(`/api/videos/${video._id}/invite`, {
+      const res = await fetch(`/api/videos/${project._id}/invite`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email: inviteEmail }),
@@ -632,7 +678,7 @@ export default function VideoPage() {
       }
 
       const data = await res.json();
-      setVideo(data.video);
+      setProject(data.video);
       setInviteEmail('');
       setShowInviteModal(false);
       alert(`Successfully invited ${inviteEmail}`);
@@ -643,11 +689,11 @@ export default function VideoPage() {
   };
 
   const removeInvitedUser = async (email: string) => {
-    if (!video) return;
+    if (!project) return;
     if (!confirm('Are you sure you want to remove this user?')) return;
 
     try {
-      const res = await fetch(`/api/videos/${video._id}/invite?email=${encodeURIComponent(email)}`, {
+      const res = await fetch(`/api/videos/${project._id}/invite?email=${encodeURIComponent(email)}`, {
         method: 'DELETE',
       });
 
@@ -656,7 +702,7 @@ export default function VideoPage() {
       }
 
       const data = await res.json();
-      setVideo(data.video);
+      setProject(data.video);
     } catch (err: any) {
       console.error('Remove user error:', err);
       alert('Failed to remove user: ' + err.message);
@@ -664,14 +710,14 @@ export default function VideoPage() {
   };
 
   const jumpToTime = (timestamp: number, shouldPause: boolean = false) => {
-    if (!video) return;
+    if (!currentVideo) return;
 
-    if (video.videoSource === 'youtube' && playerRef.current && playerRef.current.seekTo) {
+    if (playerRef.current && playerRef.current.seekTo) {
       playerRef.current.seekTo(timestamp, true);
       if (shouldPause) {
         playerRef.current.pauseVideo();
       }
-    } else if (video.videoSource === 'upload' && videoRef.current) {
+    } else if (videoRef.current) {
       videoRef.current.currentTime = timestamp;
       if (shouldPause) {
         videoRef.current.pause();
@@ -693,7 +739,7 @@ export default function VideoPage() {
     }
 
     if (newComment.trim() && selectedRange) {
-      addComment();
+      addVideoComment();
     }
 
     const time = getTimeFromPosition(e.clientX);
@@ -719,7 +765,7 @@ export default function VideoPage() {
 
     if (Math.abs(end - start) > 0.1) {
       setHasDragged(true);
-      if (video?.videoSource === 'upload' && videoRef.current && !hasDragged) {
+      if (videoRef.current && !hasDragged) {
         videoRef.current.pause();
       }
     }
@@ -752,7 +798,7 @@ export default function VideoPage() {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [video]);
+  }, [currentVideo]);
 
   const getSelectionStyle = () => {
     if (!selectedRange || duration === 0) return {};
@@ -765,16 +811,16 @@ export default function VideoPage() {
   };
 
   const togglePlayPause = () => {
-    if (!video) return;
+    if (!currentVideo) return;
 
-    if (video.videoSource === 'youtube' && playerRef.current) {
+    if (playerRef.current) {
       const state = playerRef.current.getPlayerState();
       if (state === 1) {
         playerRef.current.pauseVideo();
       } else {
         playerRef.current.playVideo();
       }
-    } else if (video.videoSource === 'upload' && videoRef.current) {
+    } else if (videoRef.current) {
       if (videoRef.current.paused) {
         videoRef.current.play();
       } else {
@@ -786,7 +832,7 @@ export default function VideoPage() {
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-gray-600">Loading video...</div>
+        <div className="text-gray-600">Loading project...</div>
       </div>
     );
   }
@@ -798,15 +844,15 @@ export default function VideoPage() {
           <div className="text-6xl mb-4">🔒</div>
           <h1 className="text-2xl font-bold text-gray-800 mb-4">Access Denied</h1>
           <p className="text-gray-600 mb-6">
-            You do not have permission to view <strong>{videoTitle}</strong>.
+            You do not have permission to view <strong>{projectTitle}</strong>.
           </p>
           {ownerEmail && (
             <div className="mb-6">
               <p className="text-gray-700 mb-3">
-                If you believe you should have access, please contact the video owner:
+                If you believe you should have access, please contact the project owner:
               </p>
               <a
-                href={`mailto:${ownerEmail}?subject=Request access to "${videoTitle}"`}
+                href={`mailto:${ownerEmail}?subject=Request access to "${projectTitle}"`}
                 className="inline-block px-6 py-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors font-medium"
               >
                 📧 Contact Owner
@@ -832,11 +878,11 @@ export default function VideoPage() {
     );
   }
 
-  if (error || !video) {
+  if (error || !project || !currentVideo) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
-          <p className="text-red-600 mb-4">{error || 'Video not found'}</p>
+          <p className="text-red-600 mb-4">{error || 'Project not found'}</p>
           <button
             onClick={() => router.push('/dashboard')}
             className="px-4 py-2 text-white rounded-lg"
@@ -852,10 +898,11 @@ export default function VideoPage() {
   return (
     <div className="min-h-screen bg-gray-50 p-8">
       <div className="max-w-[1440px] p-[64px] mx-auto">
+        {/* Header */}
         <div className="flex justify-between items-center mb-[25px]">
           <div className="flex flex-col gap-2">
             <div className="flex items-center gap-4">
-              <h1 className="text-3xl font-bold text-gray-800">{video.title}</h1>
+              <h1 className="text-3xl font-bold text-gray-800">{project.title}</h1>
               {isOwner && (
                 <>
                   <button
@@ -863,10 +910,10 @@ export default function VideoPage() {
                     className="text-xs px-2 py-0.5 rounded bg-gray-100 text-gray-600 hover:bg-gray-200 transition-colors cursor-pointer"
                     title="Click to adjust permissions"
                   >
-                    {video.permission === 'invited-only' && '🔒 Invited Only'}
-                    {video.permission === 'anyone-view' && '👁️ Anyone View'}
-                    {video.permission === 'anyone-edit' && '✏️ Anyone Edit'}
-                    {!video.permission && '🔒 Invited Only'}
+                    {project.permission === 'invited-only' && '🔒 Invited Only'}
+                    {project.permission === 'anyone-view' && '👁️ Anyone View'}
+                    {project.permission === 'anyone-edit' && '✏️ Anyone Edit'}
+                    {!project.permission && '🔒 Invited Only'}
                   </button>
                 </>
               )}
@@ -879,25 +926,30 @@ export default function VideoPage() {
             Back to Dashboard
           </button>
         </div>
-        
+
         <div className="flex flex-col gap-[25px]">
 
+          {/* Video Thumbnails Bar */}
           <div className='flex gap-[20px] w-full h-full bg-[#E8E8E8] px-[35px] py-[15px]'>
-            {/* Remaining video thumbnails */}
-            {video.videos && video.videos.length > 1 && video.videos.map((videoItem, index) => {
-              if (index === currentVideoIndex) return null;
-              return (
-                <div key={index} className={`w-[125px] h-[70px] bg-white rounded-lg shadow-lg`}>
-                  {videoItem.thumbnail && (
-                    <img
-                      src={videoItem.thumbnail}
-                      alt={`Video ${index + 1}`}
-                      className="w-full h-full rounded"
-                    />
-                  )}
-                </div>
-              );
-            })}
+            {project.videos && project.videos.map((video, index) => (
+              <div
+                key={video._id}
+                onClick={() => handleVideoSwitch(index)}
+                className={`w-[125px] h-[70px] rounded-lg shadow-lg cursor-pointer transition-all ${
+                  index === currentVideoIndex
+                    ? 'ring-4 ring-blue-500 scale-105'
+                    : 'hover:scale-105'
+                }`}
+              >
+                {video.thumbnail && (
+                  <img
+                    src={video.thumbnail}
+                    alt={video.videoTitle}
+                    className="w-full h-full rounded object-cover"
+                  />
+                )}
+              </div>
+            ))}
           </div>
 
           <div className="flex gap-6">
@@ -907,32 +959,20 @@ export default function VideoPage() {
               {/* Video embed */}
               <div className='flex flex-col gap-[32px]'>
                 <div className="mb-6 w-full max-w-[1180px]">
-                  {(() => {
-
-                    const currentVideo = getCurrentVideo();
-                    console.log(video.videos)
-                    if (!currentVideo) return <div>No video available</div>;
-                    console.log(currentVideo)
-
-                    return (
-                      <div className='relative'>
-                      <div className='z-[9999] relative'>
-                        <VideoPlayer
-                          videoSource={currentVideo.videoSource}
-                          videoId={currentVideo.videoId}
-                          uploadedVideoUrl={currentVideo.uploadedVideoUrl}
-                          gdriveId={currentVideo.gdriveId}
-                          youtubePlayerCallback={youtubePlayerCallback}
-                          videoRef={videoRef}
-                          isPlaying={isPlaying}
-                          togglePlayPause={togglePlayPause}
-                        />                      
-                      </div>
-
-                      </div>
-
-                    );
-                  })()}
+                  <div className='relative'>
+                    <div className='z-[9999] relative'>
+                      <VideoPlayer
+                        videoSource="youtube"
+                        videoId={currentVideo.videoSource}
+                        uploadedVideoUrl={undefined}
+                        gdriveId={undefined}
+                        youtubePlayerCallback={youtubePlayerCallback}
+                        videoRef={videoRef}
+                        isPlaying={isPlaying}
+                        togglePlayPause={togglePlayPause}
+                      />
+                    </div>
+                  </div>
 
                   {/* Custom Timeline */}
                   <div className="mt-4">
@@ -950,7 +990,7 @@ export default function VideoPage() {
                           }}
                         >
                           <div className="font-semibold mb-1">{hoveredComment.timeString}</div>
-                          <div className="text-white/90">{hoveredComment.text}</div>
+                          <div className="text-white/90">{hoveredComment.content}</div>
                           <div
                             className="absolute top-full left-1/2 -translate-x-1/2 w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent"
                             style={{ borderTopColor: hoveredComment.color }}
@@ -972,7 +1012,7 @@ export default function VideoPage() {
                       style={{ userSelect: 'none' }}
                     >
                       {/* Comment labels on timeline */}
-                      {comments.map(comment => {
+                      {videoComments.map(comment => {
                         if (comment.timeRange && duration > 0) {
                           const startPercent = (comment.timeRange.start / duration) * 100;
                           const widthPercent = ((comment.timeRange.end - comment.timeRange.start) / duration) * 100;
@@ -1054,14 +1094,192 @@ export default function VideoPage() {
                     </div>
                   </div>
                 </div>
+
+                {/* General Comments Section */}
+                <div className="bg-white rounded-lg shadow-lg p-6">
+                  <h2 className="text-xl font-semibold mb-4 text-gray-800">General Comments</h2>
+
+                  {/* General Comments List */}
+                  <div className="mb-4 max-h-[400px] overflow-y-auto pr-2">
+                    {projectComments.length === 0 ? (
+                      <p className="text-gray-500 italic">No general comments yet. Add one below!</p>
+                    ) : (
+                      <div className="space-y-3">
+                        {projectComments.map(comment => {
+                          const isEditing = editingCommentId === comment._id;
+
+                          return (
+                            <div
+                              key={comment._id}
+                              className="border-l-[5px] p-3 bg-gray-50 hover:bg-gray-100 transition-all"
+                              style={{ borderLeftColor: '#3b82f6' }}
+                            >
+                              {isEditing ? (
+                                <div>
+                                  <input
+                                    type="text"
+                                    value={editText}
+                                    onChange={(e) => setEditText(e.target.value)}
+                                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-800 mb-2 text-sm"
+                                  />
+                                  <div className="flex gap-2">
+                                    <button
+                                      onClick={() => saveEdit(comment._id)}
+                                      className="px-2 py-1 text-white rounded text-xs"
+                                      style={{ backgroundColor: '#00875F' }}
+                                    >
+                                      Save
+                                    </button>
+                                    <button
+                                      onClick={cancelEdit}
+                                      className="px-2 py-1 bg-gray-200 text-gray-700 rounded text-xs"
+                                    >
+                                      Cancel
+                                    </button>
+                                  </div>
+                                </div>
+                              ) : (
+                                <div>
+                                  <div className="flex items-start justify-between mb-2">
+                                    <div className="flex items-center gap-2">
+                                      <span className="text-sm font-semibold text-gray-700">{comment.userId.name}</span>
+                                      <span className="text-xs text-gray-500">{new Date(comment.createdAt).toLocaleDateString()}</span>
+                                    </div>
+                                    <div className="flex gap-2">
+                                      {currentUserId && (
+                                        <button
+                                          onClick={() => startReply(comment._id)}
+                                          className="text-xs text-gray-500 hover:text-gray-700"
+                                        >
+                                          Reply
+                                        </button>
+                                      )}
+                                      {comment.userId._id === currentUserId && (
+                                        <>
+                                          <button
+                                            onClick={() => startEdit(comment)}
+                                            className="text-xs text-gray-500 hover:text-gray-700"
+                                          >
+                                            Edit
+                                          </button>
+                                          <button
+                                            onClick={() => deleteComment(comment._id, 'project')}
+                                            className="text-xs text-red-600 hover:text-red-700"
+                                          >
+                                            Delete
+                                          </button>
+                                        </>
+                                      )}
+                                    </div>
+                                  </div>
+                                  <p className="text-sm text-gray-600">{comment.content}</p>
+                                </div>
+                              )}
+
+                              {/* Reply input form */}
+                              {replyingToCommentId === comment._id && (
+                                <div className="mt-3 p-3 bg-white rounded-lg border">
+                                  <div className="flex gap-2 mb-2">
+                                    <input
+                                      type="text"
+                                      value={replyText}
+                                      onChange={(e) => setReplyText(e.target.value)}
+                                      onKeyPress={(e) => e.key === 'Enter' && addReply(comment._id, 'project')}
+                                      placeholder="Write a reply..."
+                                      className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-800 text-sm"
+                                    />
+                                    <button
+                                      onClick={() => addReply(comment._id, 'project')}
+                                      className="px-3 py-2 text-white rounded-lg transition-colors font-medium text-sm"
+                                      style={{ backgroundColor: '#00875F' }}
+                                    >
+                                      Reply
+                                    </button>
+                                    <button
+                                      onClick={cancelReply}
+                                      className="px-3 py-2 bg-gray-200 text-gray-700 rounded-lg text-sm"
+                                    >
+                                      Cancel
+                                    </button>
+                                  </div>
+                                </div>
+                              )}
+
+                              {/* Display replies */}
+                              {comment.replies && comment.replies.length > 0 && (
+                                <div className="mt-3 ml-4 space-y-2">
+                                  {comment.replies.map((reply) => (
+                                    <div
+                                      key={reply._id}
+                                      className="p-3 bg-white rounded-lg border-l-2"
+                                      style={{ borderLeftColor: '#3b82f6' }}
+                                    >
+                                      <div className="flex items-start justify-between mb-2">
+                                        <p className="text-sm text-gray-600">
+                                          <span className="font-medium">{reply.userId.name}</span>
+                                        </p>
+                                        {reply.userId._id === currentUserId && (
+                                          <button
+                                            onClick={() => deleteComment(reply._id, 'project')}
+                                            className="text-xs text-red-600 hover:text-red-700"
+                                          >
+                                            Delete
+                                          </button>
+                                        )}
+                                      </div>
+                                      <p className="text-sm text-gray-700 mb-1">{reply.content}</p>
+                                      <p className="text-xs text-gray-500">
+                                        {new Date(reply.createdAt).toLocaleDateString()}
+                                      </p>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Add General Comment UI */}
+                  {currentUserId ? (
+                    <div className="border-t pt-4">
+                      <div className="flex gap-2">
+                        <input
+                          type="text"
+                          value={newProjectComment}
+                          onChange={(e) => setNewProjectComment(e.target.value)}
+                          onKeyPress={(e) => e.key === 'Enter' && addProjectComment()}
+                          placeholder="Add a general comment about this project..."
+                          className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-800 text-sm"
+                        />
+                        <button
+                          onClick={addProjectComment}
+                          className="px-4 py-2 text-white rounded-lg transition-colors font-medium text-sm"
+                          style={{ backgroundColor: '#00875F' }}
+                          onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#006644')}
+                          onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = '#00875F')}
+                        >
+                          Add
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="border-t pt-4 text-center">
+                      <p className="text-gray-600 text-sm">
+                        <a href="/login" className="text-blue-500 hover:underline">Log in</a> or <a href="/signup" className="text-blue-500 hover:underline">Sign up</a> to add comments
+                      </p>
+                    </div>
+                  )}
+                </div>
               </div>
 
             </div>
 
             {/* Sidebar */}
             <div className="w-96">
-            {/* <div className="w-full max-w-[400px]"> */}
-              {/* Timestamp Comments Section - Same height as video section */}
+              {/* Timestamp Comments Section */}
               <div
                 className="bg-white rounded-lg shadow-lg p-6 flex flex-col"
                 style={{ height: 'fit-content' }}
@@ -1077,11 +1295,11 @@ export default function VideoPage() {
                     minHeight: '400px'
                   }}
                 >
-                  {comments.length === 0 ? (
-                    <p className="text-gray-500 italic">No comments yet. Add one below!</p>
+                  {videoComments.length === 0 ? (
+                    <p className="text-gray-500 italic">No timestamp comments yet. Add one below!</p>
                   ) : (
                     <div className="space-y-3">
-                      {comments.map(comment => {
+                      {videoComments.map(comment => {
                         const isActive = displayedComments.some(dc => dc._id === comment._id);
                         const isEditing = editingCommentId === comment._id;
 
@@ -1099,14 +1317,9 @@ export default function VideoPage() {
                               borderLeftColor: comment.color,
                             }}
                             onClick={(e) => {
-                              // Don't trigger if clicking on buttons
                               if ((e.target as HTMLElement).tagName === 'BUTTON') return;
-
-                              // Jump to the comment's timestamp/time range start
                               const targetTime = comment.timestamp ?? comment.timeRange?.start ?? 0;
                               jumpToTime(targetTime, false);
-
-                              // Scroll to this comment
                               const commentElement = commentRefs.current.get(comment._id);
                               if (commentElement) {
                                 commentElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -1177,7 +1390,7 @@ export default function VideoPage() {
                                           Edit
                                         </button>
                                         <button
-                                          onClick={() => deleteComment(comment._id)}
+                                          onClick={() => deleteComment(comment._id, 'video')}
                                           className="text-xs text-red-600 hover:text-red-700"
                                         >
                                           Delete
@@ -1188,7 +1401,7 @@ export default function VideoPage() {
                                 </div>
                                 <p className={`text-sm mb-1 ${
                                   isActive ? 'text-gray-900 font-medium' : 'text-gray-600'
-                                }`}>{comment.text}</p>
+                                }`}>{comment.content}</p>
                                 <p className={`text-xs ${
                                   isActive ? 'text-gray-600' : 'text-gray-500'
                                 }`}>
@@ -1205,12 +1418,12 @@ export default function VideoPage() {
                                     type="text"
                                     value={replyText}
                                     onChange={(e) => setReplyText(e.target.value)}
-                                    onKeyPress={(e) => e.key === 'Enter' && addReply(comment._id)}
+                                    onKeyPress={(e) => e.key === 'Enter' && addReply(comment._id, 'video')}
                                     placeholder="Write a reply..."
                                     className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-800 text-sm"
                                   />
                                   <button
-                                    onClick={() => addReply(comment._id)}
+                                    onClick={() => addReply(comment._id, 'video')}
                                     className="px-3 py-2 text-white rounded-lg transition-colors font-medium text-sm"
                                     style={{ backgroundColor: '#00875F' }}
                                   >
@@ -1241,14 +1454,14 @@ export default function VideoPage() {
                                       </p>
                                       {reply.userId._id === currentUserId && (
                                         <button
-                                          onClick={() => deleteComment(reply._id)}
+                                          onClick={() => deleteComment(reply._id, 'video')}
                                           className="text-xs text-red-600 hover:text-red-700"
                                         >
                                           Delete
                                         </button>
                                       )}
                                     </div>
-                                    <p className="text-sm text-gray-700 mb-1">{reply.text}</p>
+                                    <p className="text-sm text-gray-700 mb-1">{reply.content}</p>
                                     <p className="text-xs text-gray-500">
                                       {new Date(reply.createdAt).toLocaleDateString()}
                                     </p>
@@ -1263,7 +1476,7 @@ export default function VideoPage() {
                   )}
                 </div>
 
-                {/* Add Comment UI - Compact at bottom */}
+                {/* Add Timestamp Comment UI */}
                 {currentUserId ? (
                   <div className="border-t pt-4">
                     <div className="flex gap-2 mb-2">
@@ -1271,12 +1484,12 @@ export default function VideoPage() {
                         type="text"
                         value={newComment}
                         onChange={(e) => setNewComment(e.target.value)}
-                        onKeyPress={(e) => e.key === 'Enter' && addComment()}
-                        placeholder="Add a comment..."
+                        onKeyPress={(e) => e.key === 'Enter' && addVideoComment()}
+                        placeholder="Add a timestamp comment..."
                         className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-800 text-sm"
                       />
                       <button
-                        onClick={addComment}
+                        onClick={addVideoComment}
                         className="px-4 py-2 text-white rounded-lg transition-colors font-medium text-sm"
                         style={{ backgroundColor: '#00875F' }}
                         onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#006644')}
@@ -1301,14 +1514,14 @@ export default function VideoPage() {
                 )}
               </div>
 
-              {/* Invited Commenters - Only show for logged-in users */}
+              {/* Invited Commenters */}
               {currentUserId && (
               <div className={`bg-white rounded-lg shadow-lg p-6 mt-6 ${
-                video.permission === 'anyone-edit' ? 'opacity-50 pointer-events-none' : ''
+                project.permission === 'anyone-edit' ? 'opacity-50 pointer-events-none' : ''
               }`}>
                 <div className="flex justify-between items-center mb-4">
                   <h2 className="text-xl font-semibold text-gray-800">Invited Commenters</h2>
-                  {isOwner && video.permission !== 'anyone-edit' && (
+                  {isOwner && project.permission !== 'anyone-edit' && (
                     <button
                       onClick={() => setShowInviteModal(true)}
                       className="text-blue-500 hover:text-blue-700"
@@ -1321,8 +1534,8 @@ export default function VideoPage() {
                   )}
                 </div>
                 <div className="space-y-2">
-                  {video.invitedUsers && video.invitedUsers.length > 0 ? (
-                    video.invitedUsers.map((invited) => (
+                  {project.invitedUsers && project.invitedUsers.length > 0 ? (
+                    project.invitedUsers.map((invited) => (
                       <div key={invited.email} className="flex items-center justify-between p-2 hover:bg-gray-50 rounded">
                         <div className="flex-1">
                           {invited.accepted && invited.userId ? (
@@ -1356,7 +1569,7 @@ export default function VideoPage() {
                     <p className="text-sm text-gray-500 italic">No invited users yet</p>
                   )}
                 </div>
-                {video.permission === 'anyone-edit' && (
+                {project.permission === 'anyone-edit' && (
                   <p className="text-xs text-gray-500 mt-4 italic">
                     Invite list is disabled when permission is set to "Anyone Can Edit"
                   </p>
@@ -1374,12 +1587,12 @@ export default function VideoPage() {
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" onClick={() => setShowPermissionModal(false)}>
             <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4" onClick={(e) => e.stopPropagation()}>
               <h2 className="text-xl font-bold mb-4 text-gray-800">Adjust Permissions</h2>
-              <p className="text-sm text-gray-600 mb-4">Video: {video.title}</p>
+              <p className="text-sm text-gray-600 mb-4">Project: {project.title}</p>
               <div className="space-y-3">
                 <button
                   onClick={() => updatePermission('invited-only')}
                   className={`w-full text-left p-3 rounded-lg border-2 transition-colors ${
-                    (video.permission || 'invited-only') === 'invited-only'
+                    (project.permission || 'invited-only') === 'invited-only'
                       ? 'border-blue-500 bg-blue-50'
                       : 'border-gray-300 hover:border-gray-400'
                   }`}
@@ -1390,7 +1603,7 @@ export default function VideoPage() {
                 <button
                   onClick={() => updatePermission('anyone-view')}
                   className={`w-full text-left p-3 rounded-lg border-2 transition-colors ${
-                    (video.permission || 'invited-only') === 'anyone-view'
+                    (project.permission || 'invited-only') === 'anyone-view'
                       ? 'border-blue-500 bg-blue-50'
                       : 'border-gray-300 hover:border-gray-400'
                   }`}
@@ -1401,7 +1614,7 @@ export default function VideoPage() {
                 <button
                   onClick={() => updatePermission('anyone-edit')}
                   className={`w-full text-left p-3 rounded-lg border-2 transition-colors ${
-                    (video.permission || 'invited-only') === 'anyone-edit'
+                    (project.permission || 'invited-only') === 'anyone-edit'
                       ? 'border-blue-500 bg-blue-50'
                       : 'border-gray-300 hover:border-gray-400'
                   }`}
@@ -1412,13 +1625,13 @@ export default function VideoPage() {
               </div>
               <button
                 onClick={() => {
-                  const videoUrl = window.location.href;
-                  navigator.clipboard.writeText(videoUrl);
-                  alert('Video link copied to clipboard!');
+                  const projectUrl = window.location.href;
+                  navigator.clipboard.writeText(projectUrl);
+                  alert('Project link copied to clipboard!');
                 }}
                 className="mt-4 w-full px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors"
               >
-                📋 Copy Video Link
+                📋 Copy Project Link
               </button>
               <button
                 onClick={() => setShowPermissionModal(false)}
@@ -1435,7 +1648,7 @@ export default function VideoPage() {
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" onClick={() => setShowInviteModal(false)}>
             <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4" onClick={(e) => e.stopPropagation()}>
               <h2 className="text-xl font-bold mb-4 text-gray-800">Invite User</h2>
-              <p className="text-sm text-gray-600 mb-4">Video: {video.title}</p>
+              <p className="text-sm text-gray-600 mb-4">Project: {project.title}</p>
               <input
                 type="email"
                 value={inviteEmail}
@@ -1463,13 +1676,13 @@ export default function VideoPage() {
               </div>
               <button
                 onClick={() => {
-                  const videoUrl = window.location.href;
-                  navigator.clipboard.writeText(videoUrl);
-                  alert('Video link copied to clipboard!');
+                  const projectUrl = window.location.href;
+                  navigator.clipboard.writeText(projectUrl);
+                  alert('Project link copied to clipboard!');
                 }}
                 className="w-full px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors"
               >
-                📋 Copy Video Link
+                📋 Copy Project Link
               </button>
             </div>
           </div>

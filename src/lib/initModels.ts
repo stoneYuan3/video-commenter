@@ -2,6 +2,7 @@
 // This ensures all models are registered before any database operations that use populate()
 
 import User from '@/models/User';
+import Project from '@/models/Project';
 import Video from '@/models/Video';
 import Comment from '@/models/Comment';
 
@@ -20,6 +21,7 @@ export function initializeModels() {
 
   return {
     User,
+    Project,
     Video,
     Comment,
   };

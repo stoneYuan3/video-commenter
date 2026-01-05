@@ -1,11 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import connectDB from '@/lib/mongodb';
-import Video from '@/models/Video';
+import Project from '@/models/Project';
 import User from '@/models/User';
 import { getUserFromRequest } from '@/lib/auth';
 import { executeDbOperation } from '@/lib/dbUtils';
 
-// Accept invitation
+/**
+ * POST /api/videos/[id]/accept-invite
+ * Accepts an invitation to collaborate on a project
+ * Body: { email: string }
+ */
 export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -23,32 +27,32 @@ export async function POST(
 
     const result = await executeDbOperation(
       async () => {
-        const video = await Video.findById(id);
+        const project = await Project.findById(id);
 
-        if (!video) {
-          throw new Error('Video not found');
+        if (!project) {
+          throw new Error('Project not found');
         }
 
         // Find the invitation
-        const invitationIndex = video.invitedUsers.findIndex(
+        const invitationIndex = project.invitedUsers.findIndex(
           (invited: any) => invited.email === email
         );
 
         if (invitationIndex === -1) {
           // Return specific error response for deleted/not-found invitations
-          const populatedVideo = await video.populate('userId', 'email');
+          const populatedProject = await project.populate('userId', 'email');
           return {
             notFound: true,
-            videoTitle: video.title,
-            ownerEmail: (populatedVideo.userId as any)?.email
+            videoTitle: project.title,
+            ownerEmail: (populatedProject.userId as any)?.email
           };
         }
 
-        const invitation = video.invitedUsers[invitationIndex];
+        const invitation = project.invitedUsers[invitationIndex];
 
         if (invitation.accepted) {
           // Already accepted, just return success
-          return { video, alreadyAccepted: true, hasAccount: !!invitation.userId };
+          return { project, alreadyAccepted: true, hasAccount: !!invitation.userId };
         }
 
         // Check if user has an account
@@ -56,25 +60,25 @@ export async function POST(
 
         if (!user) {
           // User doesn't have account yet, mark as pending signup
-          return { video, hasAccount: false, alreadyAccepted: false };
+          return { project, hasAccount: false, alreadyAccepted: false };
         }
 
         // User has account, mark as accepted
-        video.invitedUsers[invitationIndex].accepted = true;
-        video.invitedUsers[invitationIndex].userId = user._id;
-        await video.save();
+        project.invitedUsers[invitationIndex].accepted = true;
+        project.invitedUsers[invitationIndex].userId = user._id;
+        await project.save();
 
-        return { video, hasAccount: true, alreadyAccepted: false };
+        return { project, hasAccount: true, alreadyAccepted: false };
       },
       'Failed to accept invitation'
     );
 
-    const { video, hasAccount, alreadyAccepted, notFound, videoTitle, ownerEmail } = result as any;
+    const { project, hasAccount, alreadyAccepted, notFound, videoTitle, ownerEmail } = result as any;
 
     // Handle invitation not found case
     if (notFound) {
       return NextResponse.json({
-        error: 'Invitation not found. Please contact the video owner.',
+        error: 'Invitation not found. Please contact the project owner.',
         invitationNotFound: true,
         videoTitle,
         ownerEmail
@@ -85,8 +89,8 @@ export async function POST(
       success: true,
       hasAccount,
       alreadyAccepted,
-      videoId: video._id,
-      videoTitle: video.title,
+      videoId: project._id,
+      videoTitle: project.title,
     }, { status: 200 });
 
   } catch (error: any) {

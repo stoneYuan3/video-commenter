@@ -1,25 +1,35 @@
 import { NextRequest, NextResponse } from 'next/server';
 import connectDB from '@/lib/mongodb';
+import Project from '@/models/Project';
 import Video from '@/models/Video';
 import { getUserFromRequest } from '@/lib/auth';
 
-// GET all videos for the logged-in user
+/**
+ * GET /api/videos
+ * Retrieves all projects owned by the currently logged-in user
+ * Returns: Array of projects sorted by creation date (newest first)
+ */
 export async function GET(req: NextRequest) {
   try {
+    // Authenticate user
     const user = getUserFromRequest(req);
-
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
     await connectDB();
 
-    const videos = await Video.find({ userId: user.userId })
-      .sort({ createdAt: -1 });
+    // Find all projects owned by this user
+    const projects = await Project.find({ userId: user.userId })
+      .populate({
+        path: 'videos',
+        select: 'videoTitle thumbnail', // Only fetch title and thumbnail for list view
+      })
+      .sort({ createdAt: -1 }); // Newest first
 
-    return NextResponse.json({ videos }, { status: 200 });
+    return NextResponse.json({ videos: projects }, { status: 200 });
   } catch (error: any) {
-    console.error('Get videos error:', error);
+    console.error('Get projects error:', error);
     return NextResponse.json(
       { error: error.message || 'Something went wrong' },
       { status: 500 }
@@ -27,11 +37,21 @@ export async function GET(req: NextRequest) {
   }
 }
 
-// POST create a new video (supports both single and multiple videos)
+/**
+ * POST /api/videos
+ * Creates a new project with multiple videos
+ * Body: { title: string, videos: Array<{ url: string }> }
+ * Process:
+ * 1. Validate input
+ * 2. Extract YouTube video IDs from URLs
+ * 3. Fetch video titles from YouTube (or use defaults)
+ * 4. Create Video documents
+ * 5. Create Project document with Video references
+ */
 export async function POST(req: NextRequest) {
   try {
+    // Authenticate user
     const user = getUserFromRequest(req);
-
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
@@ -39,78 +59,66 @@ export async function POST(req: NextRequest) {
     await connectDB();
 
     const body = await req.json();
-    const { title, videos, videoSource, videoId, gdriveId, uploadedVideoUrl, thumbnail, duration } = body;
+    const { title, videos } = body;
 
-    // Validation
+    // Validate project title
     if (!title || !title.trim()) {
-      return NextResponse.json({ error: 'Title is required' }, { status: 400 });
+      return NextResponse.json({ error: 'Project title is required' }, { status: 400 });
     }
 
-    // Prepare video data
-    let videoData: any = {
+    // Validate videos array
+    if (!videos || !Array.isArray(videos) || videos.length === 0) {
+      return NextResponse.json({ error: 'At least one video is required' }, { status: 400 });
+    }
+
+    // Process each video and create Video documents
+    const createdVideos = [];
+    for (const videoData of videos) {
+      const { videoSource, videoId, thumbnail, videoTitle, duration } = videoData;
+
+      // Validate required fields
+      if (!videoSource) {
+        return NextResponse.json(
+          { error: 'Video source is required for all videos' },
+          { status: 400 }
+        );
+      }
+
+      // Create Video document
+      const video = await Video.create({
+        videoTitle: videoTitle || 'Untitled Video', // Use provided title or default
+        videoSource: videoSource, // YouTube URL or video ID
+        thumbnail: thumbnail || '', // YouTube thumbnail URL
+        duration: duration || 0,
+      });
+
+      createdVideos.push(video._id);
+    }
+
+    // Create Project document with references to created videos
+    const project = await Project.create({
       userId: user.userId,
       title: title.trim(),
-      permission: 'invited-only',
-    };
+      videos: createdVideos, // Array of Video._id references
+      permission: 'invited-only', // Default permission
+      invitedUsers: [],
+      lastOpenedBy: new Map(),
+    });
 
-    // NEW: Handle videos array (multi-video)
-    if (videos && Array.isArray(videos) && videos.length > 0) {
-      videoData.videos = videos.map((v: any, index: number) => ({
-        videoSource: v.videoSource || 'youtube',
-        videoId: v.videoId,
-        gdriveId: v.gdriveId,
-        uploadedVideoUrl: v.uploadedVideoUrl,
-        duration: v.duration,
-        thumbnail: v.thumbnail,
-        order: v.order ?? index,
-      }));
-
-      // BACKWARD COMPATIBILITY: Also set first video in old fields
-      const firstVideo = videos[0];
-      videoData.videoSource = firstVideo.videoSource || 'youtube';
-      videoData.videoId = firstVideo.videoId;
-      videoData.gdriveId = firstVideo.gdriveId;
-      videoData.uploadedVideoUrl = firstVideo.uploadedVideoUrl;
-      videoData.thumbnail = firstVideo.thumbnail || thumbnail;
-      videoData.duration = firstVideo.duration || duration || 0;
-    }
-    // LEGACY: Handle single video (old format)
-    else if (videoSource) {
-      videoData.videoSource = videoSource;
-      videoData.videoId = videoId;
-      videoData.gdriveId = gdriveId;
-      videoData.uploadedVideoUrl = uploadedVideoUrl;
-      videoData.thumbnail = thumbnail;
-      videoData.duration = duration || 0;
-
-      // Also create videos array with single item for forward compatibility
-      videoData.videos = [{
-        videoSource,
-        videoId,
-        gdriveId,
-        uploadedVideoUrl,
-        duration: duration || 0,
-        thumbnail,
-        order: 0,
-      }];
-    } else {
-      return NextResponse.json(
-        { error: 'Either videos array or videoSource is required' },
-        { status: 400 }
-      );
-    }
-
-    const video = await Video.create(videoData);
-
-    const populatedVideo = await Video.findById(video._id)
-      .populate('userId', 'username name email');
+    // Populate the project with video details for response
+    const populatedProject = await Project.findById(project._id)
+      .populate('userId', 'username name email')
+      .populate('videos', 'videoTitle videoSource thumbnail duration');
 
     return NextResponse.json(
-      { message: 'Video created successfully', video: populatedVideo },
+      {
+        message: 'Project created successfully',
+        video: populatedProject // Keep 'video' key for backward compatibility with frontend
+      },
       { status: 201 }
     );
   } catch (error: any) {
-    console.error('Create video error:', error);
+    console.error('Create project error:', error);
     return NextResponse.json(
       { error: error.message || 'Something went wrong' },
       { status: 500 }

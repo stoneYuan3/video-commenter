@@ -1,9 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import connectDB from '@/lib/mongodb';
-import Video from '@/models/Video';
+import Project from '@/models/Project';
 import { getUserFromRequest } from '@/lib/auth';
 
-// Update video permissions
+/**
+ * PATCH /api/videos/[id]/permissions
+ * Updates project permission settings
+ * Only the project owner can change permissions
+ *
+ * Body: { permission: 'invited-only' | 'anyone-view' | 'anyone-edit' }
+ */
 export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -20,25 +26,37 @@ export async function PATCH(
     const { id } = await params;
     const { permission } = await req.json();
 
+    // Validate permission value
     if (!['invited-only', 'anyone-view', 'anyone-edit'].includes(permission)) {
       return NextResponse.json({ error: 'Invalid permission type' }, { status: 400 });
     }
 
-    const video = await Video.findById(id);
+    // Find the project
+    const project = await Project.findById(id);
 
-    if (!video) {
-      return NextResponse.json({ error: 'Video not found' }, { status: 404 });
+    if (!project) {
+      return NextResponse.json({ error: 'Project not found' }, { status: 404 });
     }
 
     // Only owner can change permissions
-    if (video.userId.toString() !== user.userId) {
-      return NextResponse.json({ error: 'Only the video owner can change permissions' }, { status: 403 });
+    if (project.userId.toString() !== user.userId) {
+      return NextResponse.json({ error: 'Only the project owner can change permissions' }, { status: 403 });
     }
 
-    video.permission = permission;
-    await video.save();
+    // Update permission
+    project.permission = permission;
+    await project.save();
 
-    return NextResponse.json({ video }, { status: 200 });
+    // Return updated project with populated fields
+    const updatedProject = await Project.findById(project._id)
+      .populate('userId', 'username name email')
+      .populate('invitedUsers.userId', 'name email')
+      .populate({
+        path: 'videos',
+        select: 'videoTitle thumbnail _id',
+      });
+
+    return NextResponse.json({ video: updatedProject }, { status: 200 }); // Keep 'video' key for backward compatibility
   } catch (error: any) {
     console.error('Update permission error:', error);
     return NextResponse.json(

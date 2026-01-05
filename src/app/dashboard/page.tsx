@@ -4,18 +4,30 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 
+/**
+ * Video Interface (used for thumbnails in project)
+ */
 interface Video {
   _id: string;
+  videoTitle: string;
+  videoSource: string;   // YouTube video ID or upload path
+  thumbnail: string;
+  duration?: number;
+}
+
+/**
+ * Project Interface
+ * Represents a project containing multiple videos
+ */
+interface Project {
+  _id: string;
   title: string;
-  videoSource: 'youtube' | 'upload' | 'gdrive';
-  videoId?: string;
-  gdriveId?: string;
-  thumbnail?: string;
-  duration: number;
+  videos: Video[];       // Array of video metadata
   permission?: 'invited-only' | 'anyone-view' | 'anyone-edit';
   invitedUsers?: Array<{
     email: string;
     accepted: boolean;
+    userId?: any;
   }>;
   userId?: any;
   createdAt: string;
@@ -23,14 +35,14 @@ interface Video {
 }
 
 export default function DashboardPage() {
-  const [allVideos, setAllVideos] = useState<Video[]>([]); // All accessible videos
-  const [myVideos, setMyVideos] = useState<Video[]>([]); // Only owned videos
+  const [allVideos, setAllVideos] = useState<Project[]>([]); // All accessible projects
+  const [myVideos, setMyVideos] = useState<Project[]>([]); // Only owned projects
   const [activeTab, setActiveTab] = useState<'dashboard' | 'my-videos'>('dashboard');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [showPermissionModal, setShowPermissionModal] = useState(false);
   const [showInviteModal, setShowInviteModal] = useState(false);
-  const [selectedVideo, setSelectedVideo] = useState<Video | null>(null);
+  const [selectedVideo, setSelectedVideo] = useState<Project | null>(null);
   const [inviteEmail, setInviteEmail] = useState('');
   const [currentUserId, setCurrentUserId] = useState<string>('');
   const router = useRouter();
@@ -251,24 +263,30 @@ export default function DashboardPage() {
     setShowInviteModal(true);
   };
 
-  const getThumbnail = (video: Video) => {
-    if (video.thumbnail) return video.thumbnail;
-    if (video.videoSource === 'youtube' && video.videoId) {
-      return `https://img.youtube.com/vi/${video.videoId}/mqdefault.jpg`;
+  /**
+   * Get thumbnail for a project
+   * Uses the thumbnail of the first video in the project
+   */
+  const getThumbnail = (project: Project) => {
+    // Get first video's thumbnail
+    if (project.videos && project.videos.length > 0) {
+      const firstVideo = project.videos[0];
+      if (firstVideo.thumbnail) {
+        return firstVideo.thumbnail;
+      }
     }
-    return '/placeholder-video.png'; // You can add a placeholder image
+    return '/placeholder-video.png'; // Placeholder if no videos or no thumbnail
   };
 
-  const getSourceBadge = (source: string) => {
-    const badges = {
-      youtube: { text: 'YouTube', color: 'bg-red-500' },
-      gdrive: { text: 'Google Drive', color: 'bg-blue-500' },
-      upload: { text: 'Uploaded', color: 'bg-green-500' },
-    };
-    const badge = badges[source as keyof typeof badges];
+  /**
+   * Get video count badge for project
+   * Shows how many videos are in this project
+   */
+  const getVideoCountBadge = (project: Project) => {
+    const count = project.videos?.length || 0;
     return (
-      <span className={`${badge.color} text-white text-xs px-2 py-1 rounded`}>
-        {badge.text}
+      <span className="bg-blue-500 text-white text-xs px-2 py-1 rounded">
+        {count} {count === 1 ? 'video' : 'videos'}
       </span>
     );
   };
@@ -375,7 +393,7 @@ export default function DashboardPage() {
                           className="w-full h-full object-cover"
                         />
                         <div className="absolute top-2 right-2">
-                          {getSourceBadge(video.videoSource)}
+                          {getVideoCountBadge(video)}
                         </div>
                       </div>
                       <div className="p-4 flex flex-row items-center w-full justify-between">
