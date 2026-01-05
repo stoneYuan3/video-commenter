@@ -118,15 +118,18 @@ export default function VideoPage() {
 
   // Helper to get current video (supports both old and new structure)
   const getCurrentVideo = useCallback((): VideoItem | null => {
+    console.log('start')
     if (!video) return null;
 
     // Try new structure first
     if (video.videos && video.videos.length > currentVideoIndex) {
+      console.log('new')
       return video.videos[currentVideoIndex];
     }
 
     // Fallback to old structure
     if (video.videoSource) {
+      console.log('old')
       return {
         videoSource: video.videoSource,
         videoId: video.videoId,
@@ -413,14 +416,14 @@ export default function VideoPage() {
     if (!newComment.trim() || !video) return;
 
     const currentVideo = getCurrentVideo();
-    if (!currentVideo || !currentVideo._id) {
+    if (!currentVideo || !currentVideo.videoId) {
       alert('Unable to determine current video item');
       return;
     }
 
     const commentData = {
-      videoId: video._id,
-      videoItemId: currentVideo._id,
+      videoId: video.videoId,
+      videoItemId: currentVideo.videoId,
       text: newComment,
       timeString: selectedRange
         ? formatTimeRange(selectedRange.start, selectedRange.end)
@@ -430,7 +433,7 @@ export default function VideoPage() {
         ? { timeRange: selectedRange }
         : { timestamp: currentTime }),
     };
-
+    console.log(commentData)
     try {
       const res = await fetch('/api/comments', {
         method: 'POST',
