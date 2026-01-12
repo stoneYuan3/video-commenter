@@ -22,6 +22,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         <div
           ref={youtubePlayerCallback}
           className="rounded"
+          style={{ minHeight: '480px', width: '100%' }}
         />
       );
     }
@@ -30,7 +31,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   };
 
   return (
-    <div>
+    <div className="w-full">
       { renderVideoContent() }
     </div>
   );

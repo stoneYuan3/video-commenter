@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
+import Script from 'next/script';
 import { VideoPlayer } from '@/components/VideoPlayer';
 
 /**
@@ -247,19 +248,15 @@ export default function VideoPage() {
     }
   }, [projectIdParam]);
 
-  // Load YouTube IFrame API on mount
-  useEffect(() => {
-    if (!document.querySelector('script[src*="youtube.com/iframe_api"]')) {
-      const tag = document.createElement('script');
-      tag.src = 'https://www.youtube.com/iframe_api';
-      tag.async = true;
-      const firstScriptTag = document.getElementsByTagName('script')[0];
-      firstScriptTag.parentNode?.insertBefore(tag, firstScriptTag);
-    }
+  // YouTube API ready handler
+  const handleYouTubeApiReady = useCallback(() => {
+    console.log('YouTube IFrame API is ready');
+    ytApiLoadedRef.current = true;
+  }, []);
 
-    window.onYouTubeIframeAPIReady = () => {
-      ytApiLoadedRef.current = true;
-    };
+  // Set up global callback for YouTube API
+  useEffect(() => {
+    window.onYouTubeIframeAPIReady = handleYouTubeApiReady;
 
     return () => {
       if (playerRef.current && playerRef.current.destroy) {
@@ -269,7 +266,7 @@ export default function VideoPage() {
       playerInitializedRef.current = false;
       currentVideoIdRef.current = '';
     };
-  }, []);
+  }, [handleYouTubeApiReady]);
 
   // Reset player when video changes
   useEffect(() => {
@@ -303,8 +300,16 @@ export default function VideoPage() {
     }
 
     const createPlayer = () => {
-      console.log('create player')
+      console.log('create player - attempting to initialize');
+
+      // Verify YT API is fully loaded
+      if (!window.YT || !window.YT.Player) {
+        console.error('YouTube API not available');
+        return;
+      }
+
       try {
+        console.log('Creating YouTube player for video:', videoId);
         playerRef.current = new window.YT.Player(node, {
           height: '480',
           width: '100%',
@@ -317,9 +322,12 @@ export default function VideoPage() {
           },
           events: {
             'onReady': onPlayerReady,
+            'onError': (event: any) => {
+              console.error('YouTube Player Error:', event.data);
+            }
           }
         });
-        console.log('create player try')
+        console.log('YouTube player created successfully');
         playerInitializedRef.current = true;
         currentVideoIdRef.current = videoId;
       } catch (error) {
@@ -327,16 +335,25 @@ export default function VideoPage() {
       }
     };
 
+    // Wait for YouTube API to be ready
     if (window.YT && window.YT.Player) {
+      console.log('YouTube API already loaded, creating player immediately');
       createPlayer();
     } else {
+      console.log('Waiting for YouTube API to load...');
+      let attempts = 0;
+      const maxAttempts = 100; // 10 seconds total
       const checkInterval = setInterval(() => {
+        attempts++;
         if (window.YT && window.YT.Player) {
+          console.log('YouTube API loaded after', attempts * 100, 'ms');
           clearInterval(checkInterval);
           createPlayer();
+        } else if (attempts >= maxAttempts) {
+          console.error('YouTube API failed to load after 10 seconds');
+          clearInterval(checkInterval);
         }
       }, 100);
-      setTimeout(() => clearInterval(checkInterval), 10000);
     }
   }, [currentVideo]);
 
@@ -898,8 +915,21 @@ export default function VideoPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 p-8">
-      <div className="max-w-[1440px] p-[64px] mx-auto">
+    <>
+      {/* Load YouTube IFrame API */}
+      <Script
+        src="https://www.youtube.com/iframe_api"
+        strategy="lazyOnload"
+        onLoad={() => {
+          console.log('YouTube API script loaded');
+        }}
+        onError={(e) => {
+          console.error('Failed to load YouTube API script:', e);
+        }}
+      />
+
+      <div className="min-h-screen bg-gray-50 p-8">
+        <div className="max-w-[1440px] p-[64px] mx-auto">
         {/* Header */}
         <div className="flex justify-between items-center mb-[25px]">
           <div className="flex flex-col gap-2">
@@ -1689,5 +1719,6 @@ export default function VideoPage() {
         )}
       </div>
     </div>
+    </>
   );
 }
