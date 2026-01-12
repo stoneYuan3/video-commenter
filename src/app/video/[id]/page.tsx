@@ -303,6 +303,7 @@ export default function VideoPage() {
     }
 
     const createPlayer = () => {
+      console.log('create player')
       try {
         playerRef.current = new window.YT.Player(node, {
           height: '480',
@@ -318,6 +319,7 @@ export default function VideoPage() {
             'onReady': onPlayerReady,
           }
         });
+        console.log('create player try')
         playerInitializedRef.current = true;
         currentVideoIdRef.current = videoId;
       } catch (error) {
@@ -964,8 +966,6 @@ export default function VideoPage() {
                       <VideoPlayer
                         videoSource="youtube"
                         videoId={currentVideo.videoSource}
-                        uploadedVideoUrl={undefined}
-                        gdriveId={undefined}
                         youtubePlayerCallback={youtubePlayerCallback}
                         videoRef={videoRef}
                         isPlaying={isPlaying}
