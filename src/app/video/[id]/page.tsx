@@ -160,6 +160,7 @@ export default function VideoPage() {
   const currentVideoIdRef = useRef<string>('');
   const commentsContainerRef = useRef<HTMLDivElement>(null);
   const commentRefs = useRef<Map<string, HTMLDivElement>>(new Map());
+  const timeUpdateIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   /**
    * Fetch project data with optional video switching
@@ -259,6 +260,13 @@ export default function VideoPage() {
     window.onYouTubeIframeAPIReady = handleYouTubeApiReady;
 
     return () => {
+      // Clean up interval
+      if (timeUpdateIntervalRef.current) {
+        clearInterval(timeUpdateIntervalRef.current);
+        timeUpdateIntervalRef.current = null;
+      }
+
+      // Clean up player
       if (playerRef.current && playerRef.current.destroy) {
         playerRef.current.destroy();
         playerRef.current = null;
@@ -267,18 +275,6 @@ export default function VideoPage() {
       currentVideoIdRef.current = '';
     };
   }, [handleYouTubeApiReady]);
-
-  // Reset player when video changes
-  useEffect(() => {
-    if (currentVideo?.videoSource) {
-      if (playerRef.current && playerRef.current.destroy) {
-        playerRef.current.destroy();
-        playerRef.current = null;
-      }
-      playerInitializedRef.current = false;
-      currentVideoIdRef.current = '';
-    }
-  }, [currentVideo?.videoSource]);
 
   // YouTube player callback
   const youtubePlayerCallback = useCallback((node: HTMLDivElement | null) => {
@@ -358,17 +354,22 @@ export default function VideoPage() {
   }, [currentVideo]);
 
   const onPlayerReady = () => {
+    console.log('YouTube player ready');
     const dur = playerRef.current.getDuration();
     setDuration(dur);
 
-    const interval = setInterval(() => {
+    // Clear any existing interval
+    if (timeUpdateIntervalRef.current) {
+      clearInterval(timeUpdateIntervalRef.current);
+    }
+
+    // Create new interval and store reference
+    timeUpdateIntervalRef.current = setInterval(() => {
       if (playerRef.current && playerRef.current.getCurrentTime) {
         const time = playerRef.current.getCurrentTime();
         setCurrentTime(time);
       }
     }, 100);
-
-    return () => clearInterval(interval);
   };
 
   // Show timestamp comments when time matches
@@ -994,6 +995,7 @@ export default function VideoPage() {
                   <div className='relative'>
                     <div className='z-[9999] relative'>
                       <VideoPlayer
+                        key={currentVideo.videoSource}
                         videoSource="youtube"
                         videoId={currentVideo.videoSource}
                         youtubePlayerCallback={youtubePlayerCallback}
