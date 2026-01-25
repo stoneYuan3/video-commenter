@@ -960,7 +960,7 @@ export default function VideoPage() {
               <div className='flex flex-col gap-[32px]'>
                 <div className="mb-6 w-full max-w-[1180px]">
                   <div className='relative'>
-                    <div className='z-[9999] relative'>
+                    <div className='z-[1] relative'>
                       <VideoPlayer
                         videoSource="youtube"
                         videoId={currentVideo.videoSource}
